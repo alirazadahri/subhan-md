@@ -36,6 +36,7 @@ object AIBrain {
         "rotate_toggle", "dnd_toggle", "silent", "vibrate", "ring", "power_menu", "battery", "time",
         "open_camera", "open_dialer", "open_messages", "open_contacts", "open_calendar", "open_calculator",
         "open_gallery", "open_music", "open_maps", "open_email", "open_browser", "open_clock",
+        "reply_message", "read_messages", "read_calls",
         "agent_task", "chat",
     )
 
@@ -57,6 +58,9 @@ Rules:
 - open_settings: target = wifi, bluetooth, location, display, sound, battery, apps, data or settings.
 - web_search / youtube_search: text = query. set_alarm: target = "HH:MM" (24h).
 - type_text: text to type in the focused field. click: target = visible button text.
+- reply_message: reply to a received WhatsApp message. target = sender name (null = last sender), text = the reply
+  (null if the user didn't say what to reply). Use for "Ali ko reply karo ke main aa raha hoon", "reply karo theek hai".
+- read_messages: read out new WhatsApp messages. read_calls: tell what callers said to the AI answering machine.
 - media_*, brightness_*, rotate_toggle, dnd_toggle, silent/vibrate/ring, power_menu, battery, time, open_camera … open_clock:
   direct device actions, no target needed.
 - agent_task: ANY task that needs several taps inside apps or that no other action covers — e.g. "WhatsApp pe Ali ko hello bhejo",
@@ -145,6 +149,66 @@ Rules:
             text = json.optNullableString("text"),
             reply = json.optNullableString("reply"),
         )
+    }
+
+    /** One-shot plain-text completion (summaries etc.). */
+    fun complete(ctx: Context, system: String, user: String): String {
+        val messages = JSONArray()
+            .put(JSONObject().put("role", "system").put("content", system))
+            .put(JSONObject().put("role", "user").put("content", user))
+        return chat(ctx, messages, jsonMode = false).trim()
+    }
+
+    fun summarizeCall(ctx: Context, caller: String, transcript: String): String = complete(
+        ctx,
+        "You summarise phone messages for a busy person. Reply in one or two short sentences in Roman Urdu " +
+            "(the user's language), saying who called and what they want. No preamble.",
+        "Caller: $caller\nWhat the caller said (speech-to-text, may contain errors): $transcript",
+    )
+
+    /**
+     * Speech-to-text for a WAV file via the provider's Whisper endpoint (Groq or OpenAI).
+     * Returns null when no compatible key is configured.
+     */
+    fun transcribe(ctx: Context, file: java.io.File): String? {
+        val key = Prefs.apiKey(ctx)
+        val base = Prefs.baseUrl(ctx)
+        if (key.isBlank()) return null
+        val model = when {
+            base.contains("groq.com") -> "whisper-large-v3-turbo"
+            base.contains("openai.com") -> "whisper-1"
+            else -> return null
+        }
+        val boundary = "----ar${System.currentTimeMillis()}"
+        val conn = (URL("$base/audio/transcriptions").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15_000
+            readTimeout = 60_000
+            doOutput = true
+            setRequestProperty("Authorization", "Bearer $key")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            conn.outputStream.use { out ->
+                fun field(name: String, value: String) {
+                    out.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray())
+                }
+                field("model", model)
+                field("response_format", "json")
+                out.write(
+                    ("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"call.wav\"\r\n" +
+                        "Content-Type: audio/wav\r\n\r\n").toByteArray(),
+                )
+                file.inputStream().use { it.copyTo(out) }
+                out.write("\r\n--$boundary--\r\n".toByteArray())
+            }
+            val code = conn.responseCode
+            val raw = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+            if (code !in 200..299) throw IllegalStateException("HTTP $code ${raw.take(160)}")
+            return JSONObject(raw).optString("text").trim()
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /** POSTs a chat completion and returns the assistant message content. */
@@ -253,6 +317,23 @@ object LocalParser {
         m("^(?:call|dial|phone)\\s+(?:to\\s+)?(.+)$")?.let { return AICommand("call", it.groupValues[1]) }
         m("^(.+?)\\s+(?:ko|par|pe)\\s+(?:call|phone|fone)\\s*(?:lagao|milao)?\\s*$ACT$")?.let {
             return AICommand("call", it.groupValues[1])
+        }
+
+        // "Ali ko reply karo ke main aa raha hoon" / "reply karo theek hai" / "reply" (asks what to say)
+        m("^(.+?)\\s+ko\\s+reply\\s*(?:karo|kro|kar do|do|bhejo)?\\s*(?:ke|k|that|ki)?\\s*(.*)$")?.let {
+            return AICommand("reply_message", it.groupValues[1], it.groupValues[2].ifBlank { null })
+        }
+        m("^reply\\s+(?:to\\s+)?(\\S+)\\s+(?:that|saying)\\s+(.+)$")?.let {
+            return AICommand("reply_message", it.groupValues[1], it.groupValues[2])
+        }
+        m("^reply\\s*(?:karo|kro|kar do|do|bhejo)?\\s*(?:ke|k|that|ki)?\\s*(.*)$")?.let {
+            return AICommand("reply_message", null, it.groupValues[1].ifBlank { null })
+        }
+        if (Regex("(messages?|msgs?|paigham).*(parho|padho|sunao|read|batao|check)|(read|check).*(messages?|msgs?)|kis ka (message|msg)").containsMatchIn(s)) {
+            return AICommand("read_messages")
+        }
+        if (Regex("(calls?|kaal).*(sunao|batao|kya kaha|read)|kis ne call|kaun call|missed call").containsMatchIn(s)) {
+            return AICommand("read_calls")
         }
 
         m("^(?:send\\s+)?(?:whatsapp)\\s+(?:to\\s+)?(\\S+)\\s+(?:that|saying|ke|k)\\s+(.+)$")?.let {

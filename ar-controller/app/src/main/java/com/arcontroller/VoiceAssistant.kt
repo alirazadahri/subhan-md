@@ -26,6 +26,8 @@ class VoiceAssistant(private val ctx: Context, private val listener: Listener) :
     interface Listener {
         fun onStateChanged(state: State, detail: String?)
         fun onCommand(text: String)
+        /** Microphone loudness 0..1 while listening (drives the orb animation). */
+        fun onLevel(level: Float) {}
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -77,6 +79,19 @@ class VoiceAssistant(private val ctx: Context, private val listener: Listener) :
     }
 
     fun setThinking(text: String) = setState(State.THINKING, text)
+
+    /** Speak a question, then listen for the answer (e.g. "Kya reply karun?"). */
+    fun ask(text: String) {
+        listenAfterSpeech = true
+        speak(text)
+    }
+
+    /** Tap on the orb while listening: stop without running a command. */
+    fun cancelListening() {
+        listenAfterSpeech = false
+        recognizer?.cancel()
+        setState(State.OFF, null)
+    }
 
     fun speak(text: String) {
         recognizer?.cancel()
@@ -201,7 +216,7 @@ class VoiceAssistant(private val ctx: Context, private val listener: Listener) :
 
     override fun onReadyForSpeech(params: Bundle?) = Unit
     override fun onBeginningOfSpeech() = Unit
-    override fun onRmsChanged(rmsdB: Float) = Unit
+    override fun onRmsChanged(rmsdB: Float) = listener.onLevel(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() = Unit
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
