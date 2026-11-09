@@ -36,7 +36,9 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
     }
 
     @ReactMethod
-    fun clearLastError() = CrashReporter.clear(ctx)
+    fun clearLastError() {
+        CrashReporter.clear(ctx)
+    }
 
     @ReactMethod
     fun copyText(text: String) {
@@ -52,8 +54,11 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
         )
     }
 
+    // Async @ReactMethods must return void: React Native refuses to load the whole module otherwise.
     @ReactMethod
-    fun openAccessibilitySettings() = start(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    fun openAccessibilitySettings() {
+        start(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
 
     /** Android 13+ blocks Accessibility for sideloaded APKs until "Allow restricted settings" is tapped here. */
     @ReactMethod
@@ -129,7 +134,9 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
     }
 
     @ReactMethod
-    fun clearApiKey() = Prefs.save(ctx, "", null, null, null, null)
+    fun clearApiKey() {
+        Prefs.save(ctx, "", null, null, null, null)
+    }
 
     /** Runs a typed command through AI + executor, e.g. from the test box in the app. */
     @ReactMethod
