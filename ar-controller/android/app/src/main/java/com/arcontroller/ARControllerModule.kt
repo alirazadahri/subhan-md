@@ -30,8 +30,18 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
             putBoolean("canWriteSecureSettings", FloatingAppLauncher.canWriteSecureSettings(ctx))
             putBoolean("serviceRunning", OverlayService.isRunning)
             putInt("sdk", Build.VERSION.SDK_INT)
+            putString("lastError", CrashReporter.read(ctx))
         }
         promise.resolve(map)
+    }
+
+    @ReactMethod
+    fun clearLastError() = CrashReporter.clear(ctx)
+
+    @ReactMethod
+    fun copyText(text: String) {
+        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("AR", text))
     }
 
     @ReactMethod

@@ -183,6 +183,32 @@ function Home() {
       </FadeIn>
 
       {/* Permissions */}
+      {status.lastError ? (
+        <FadeIn style={styles.errorCard}>
+          <Text style={styles.errorTitle}>⚠ Pichli baar error aaya tha</Text>
+          <Text style={styles.errorText} numberOfLines={6} selectable>
+            {status.lastError}
+          </Text>
+          <View style={styles.errorButtons}>
+            <ScalePressable
+              style={styles.errorButton}
+              onPress={() => {
+                ARController.copyText(status.lastError ?? '');
+                Alert.alert('Copied ✓', 'Ye error chat mein bhej dein.');
+              }}>
+              <Text style={styles.errorButtonText}>Copy error</Text>
+            </ScalePressable>
+            <ScalePressable
+              style={styles.errorButton}
+              onPress={() => {
+                ARController.clearLastError();
+                refresh();
+              }}>
+              <Text style={styles.errorButtonText}>Dismiss</Text>
+            </ScalePressable>
+          </View>
+        </FadeIn>
+      ) : null}
       <FadeIn delay={80} style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.h2}>Permissions</Text>
@@ -466,6 +492,13 @@ const styles = StyleSheet.create({
   heroButtonText: { color: '#4C1D95', fontWeight: '900', fontSize: 16 },
   heroButtonTextStop: { color: '#fff' },
   heroHint: { color: '#FDE68A', fontSize: 12, textAlign: 'center', marginTop: 8 },
+
+  errorCard: { marginTop: 16, borderRadius: 20, padding: 14, backgroundColor: '#EF44441A', borderWidth: 1, borderColor: '#EF444466' },
+  errorTitle: { color: '#FCA5A5', fontWeight: '800', fontSize: 14 },
+  errorText: { color: colors.text, fontSize: 11, marginTop: 6, fontFamily: 'monospace' },
+  errorButtons: { flexDirection: 'row', marginTop: 10 },
+  errorButton: { marginRight: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#EF444433' },
+  errorButtonText: { color: '#fff', fontWeight: '800', fontSize: 12 },
 
   card: {
     backgroundColor: colors.card,

@@ -111,33 +111,45 @@ class OverlayService : Service(), VoiceAssistant.Listener, ScreenAgent.Listener 
         isRunning = true
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         executor = CommandExecutor(this, this)
-        FloatingAppLauncher.ensureHiddenApi()
-        startAsForeground()
-        createBubble()
         voice = VoiceAssistant(this, this)
-        startVoiceIfAllowed()
-        worker.execute { AppRepository.load(this) } // warm the app list + icons
+        // The service shares the app's process and is auto-restarted, so any startup failure here
+        // would otherwise kill the app every time it's opened. Fail soft instead.
+        try {
+            startAsForeground()
+            createBubble()
+        } catch (t: Throwable) {
+            CrashReporter.save(this, "OverlayService start failed", t)
+            stopSelf()
+            return
+        }
+        runCatching { startVoiceIfAllowed() }
+        worker.execute { runCatching { AppRepository.load(this) } } // warm the app list + icons
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> stopSelf()
-            ACTION_LISTEN -> listenNow()
-            ACTION_RELOAD_SETTINGS -> {
-                voice.stop()
-                AIBrain.clearHistory()
-                startVoiceIfAllowed()
+        try {
+            when (intent?.action) {
+                ACTION_STOP -> stopSelf()
+                ACTION_LISTEN -> listenNow()
+                ACTION_RELOAD_SETTINGS -> {
+                    voice.stop()
+                    AIBrain.clearHistory()
+                    startVoiceIfAllowed()
+                }
             }
+        } catch (t: Throwable) {
+            CrashReporter.save(this, "OverlayService command failed", t)
         }
-        return START_STICKY
+        // Not sticky: never auto-restart into a crash loop; the user restarts it from the app.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         isRunning = false
-        pulse?.cancel()
-        ScreenAgent.cancel()
-        FloatingWebWindow.closeAll()
-        voice.stop()
+        runCatching { pulse?.cancel() }
+        runCatching { ScreenAgent.cancel() }
+        runCatching { FloatingWebWindow.closeAll() }
+        runCatching { voice.stop() }
         worker.shutdownNow()
         panel?.let { safeRemove(it) }
         bubble?.let { safeRemove(it) }

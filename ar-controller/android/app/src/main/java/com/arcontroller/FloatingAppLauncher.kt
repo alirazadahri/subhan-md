@@ -30,13 +30,25 @@ object FloatingAppLauncher {
     @Volatile
     private var hiddenApiReady = false
 
-    fun ensureHiddenApi() {
+    /**
+     * HiddenApiBypass patches ART memory and can crash natively (uncatchable) on some OEM ROMs.
+     * A persisted "in progress" marker detects such a crash, so it's never attempted again on that phone.
+     */
+    fun ensureHiddenApi(ctx: Context) {
         if (hiddenApiReady || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val prefs = ctx.applicationContext.getSharedPreferences("ar_safety", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("bypass_crashed", false)) return
+        if (prefs.getBoolean("bypass_in_progress", false)) {
+            prefs.edit().putBoolean("bypass_crashed", true).putBoolean("bypass_in_progress", false).commit()
+            return
+        }
+        prefs.edit().putBoolean("bypass_in_progress", true).commit()
         hiddenApiReady = try {
-            HiddenApiBypass.addHiddenApiExemptions("L")
+            HiddenApiBypass.addHiddenApiExemptions("Landroid/app/ActivityOptions;")
         } catch (_: Throwable) {
             false
         }
+        prefs.edit().putBoolean("bypass_in_progress", false).commit()
     }
 
     fun isFreeformSupported(ctx: Context): Boolean {
@@ -90,7 +102,8 @@ object FloatingAppLauncher {
 
     private fun launchFreeform(ctx: Context, packageName: String): Boolean {
         val launch = ctx.packageManager.getLaunchIntentForPackage(packageName) ?: return false
-        ensureHiddenApi()
+        // Only needed (and only risked) once the user has actually enabled freeform windows.
+        if (isFreeformSupported(ctx)) ensureHiddenApi(ctx)
         return try {
             val options = ActivityOptions.makeBasic().setLaunchBounds(centeredBounds(ctx))
             try {

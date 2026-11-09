@@ -59,6 +59,13 @@
         </intent-filter>
       </activity>
 
+      <activity
+        android:name=".CrashActivity"
+        android:process=":crash"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:excludeFromRecents="true"
+        android:exported="false" />
+
       <service
         android:name=".OverlayService"
         android:exported="false"

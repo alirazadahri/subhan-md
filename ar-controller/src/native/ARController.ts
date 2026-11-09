@@ -9,6 +9,7 @@ export type NativeStatus = {
   canWriteSecureSettings: boolean;
   serviceRunning: boolean;
   sdk: number;
+  lastError?: string | null;
 };
 
 export type AIConfig = {
@@ -39,6 +40,8 @@ type ARControllerNative = {
   saveConfig(config: SaveConfig): Promise<boolean>;
   clearApiKey(): void;
   runCommand(text: string): Promise<CommandResult>;
+  clearLastError(): void;
+  copyText(text: string): void;
 };
 
 const native: ARControllerNative | undefined = NativeModules.ARController;
@@ -64,6 +67,8 @@ export const ARController = {
   saveConfig: (config: SaveConfig) => n.saveConfig(config),
   clearApiKey: () => n.clearApiKey(),
   runCommand: (text: string) => n.runCommand(text),
+  clearLastError: () => n.clearLastError(),
+  copyText: (text: string) => n.copyText(text),
 };
 
 /** Runtime ("dangerous") permissions requested with the normal Android dialog. */
