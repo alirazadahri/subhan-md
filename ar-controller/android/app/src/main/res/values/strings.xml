@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AR Controller</string>
+    <string name="accessibility_label">AR Controller</string>
+    <string name="accessibility_description">Lets AR Controller press Back/Home/Recents, open notifications, lock the screen, take screenshots, split the screen, tap buttons, type text and scroll when you ask it by voice or from the floating panel. AR only acts when you give it a command.</string>
+</resources>
