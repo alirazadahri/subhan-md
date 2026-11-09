@@ -1,8 +1,9 @@
 # AR Controller — AI-powered floating mobile controller (Android)
 
-React Native setup screen + native Kotlin overlay service. Say **"Hey AR"** from anywhere, or tap the
-floating **AR** icon to open the Control Panel → **ALL APPS** → tap an app and it opens as a floating
-box in the middle of the screen.
+A native Android app (Kotlin) with a web-style UI (HTML/CSS in `assets/ui`, the Capacitor-style
+approach) talking to native code through a JavaScript bridge. Say **"Hey AR"** from anywhere or tap
+the assistant orb at the bottom centre; tap the floating photo icon to open the Control Panel in place;
+**All apps** → tap an app to open it as a floating, resizable panel.
 
 > Android only. iOS doesn't allow overlays over other apps, Accessibility control, or launching other
 > apps in windows, so this cannot be built for iPhone.
@@ -11,99 +12,77 @@ box in the middle of the screen.
 
 ```
 ar-controller/
-├── App.tsx                              # Setup screen: permissions, AI settings, start/stop, test box
-├── src/
-│   ├── native/ARController.ts           # Typed JS bridge + runtime permission helpers
-│   ├── components/PermissionRow.tsx
-│   └── theme.ts
-└── android/app/src/main/
-    ├── AndroidManifest.xml              # Permissions, <queries>, overlay + accessibility services
-    ├── res/xml/accessibility_service_config.xml
-    ├── res/values/strings.xml
-    └── java/com/arcontroller/
-        ├── MainApplication.kt           # Registers ARControllerPackage
-        ├── ARControllerPackage.kt
-        ├── ARControllerModule.kt        # JS ⇄ native: status, settings screens, start/stop, config, runCommand
-        ├── OverlayService.kt            # Floating icon, Control Panel, ALL APPS grid, Ask-AI page
-        ├── FloatingAppLauncher.kt       # Opens another app as a floating (freeform) window
-        ├── VoiceAssistant.kt            # "Hey AR" wake word, speech-to-text, text-to-speech
-        ├── AIBrain.kt                   # LLM → JSON command (+ offline LocalParser)
-        ├── CommandExecutor.kt           # Executes commands: apps, calls, SMS, WhatsApp, torch, volume…
-        ├── ARAccessibilityService.kt    # Back/Home/Recents, lock, screenshot, click, type, scroll
-        ├── AppRepository.kt             # Installed-app list + fuzzy name matching
-        └── Prefs.kt                     # Settings shared by JS and the service
+├── settings.gradle.kts, build.gradle.kts, gradlew      # standalone Gradle project (AGP 9, built-in Kotlin)
+└── app/
+    ├── build.gradle.kts                                # deps: androidx.core, hiddenapibypass
+    └── src/main/
+        ├── AndroidManifest.xml                         # permissions, <queries>, services
+        ├── assets/ui/
+        │   ├── index.html      # main app: hero, permissions, floating setup, AI engine, try-it, assistant orb
+        │   ├── panel.html      # floating Control Panel: media, toggles, navigation, quick-open, All apps grid
+        │   ├── assistant.html  # Alexa-style assistant sheet (light bar, live transcript, reply, chips)
+        │   ├── style.css       # shared design system
+        │   ├── bridge.js       # promise wrapper around window.ARNative (mock data in a desktop browser)
+        │   ├── icons.js        # Lucide icons (ISC), inlined SVG
+        │   └── avatar.jpg      # app logo / assistant photo
+        ├── res/                # launcher icons, floating icon image, vector icons, accessibility config
+        └── java/com/arcontroller/
+            ├── MainActivity.kt          # hosts index.html, runtime permission dialogs, in-app voice
+            ├── Bridge.kt                # @JavascriptInterface API shared by all HTML screens
+            ├── OverlayService.kt        # floating icon, panel window, bottom orb + assistant sheet, voice
+            ├── FloatingAppLauncher.kt   # freeform launch / floating web panel / no full-screen fallback
+            ├── FloatingWebWindow.kt     # draggable, corner-resizable floating panel with size presets
+            ├── VoiceAssistant.kt        # "Hey AR" wake word, speech-to-text, text-to-speech
+            ├── AIBrain.kt               # local parser first, LLM (Groq/OpenAI-compatible/free) when needed
+            ├── CommandExecutor.kt       # apps, calls, SMS, WhatsApp, torch, media, brightness, DND, …
+            ├── ScreenAgent.kt           # multi-step "do anything" agent over Accessibility
+            ├── ARAccessibilityService.kt
+            ├── AppRepository.kt, Prefs.kt, CrashReporter.kt, MainApplication.kt
 ```
 
-No extra npm libraries are needed beyond the React Native template (`react-native-safe-area-context`
-is already included). Libraries such as `react-native-floating-bubble` only draw a bubble; they can't
-expand into a panel, list apps or launch freeform windows, so this is implemented natively.
+## Build
 
-## Build & run
-
-Requirements: Node 20+, JDK 17, Android SDK (Android Studio), a real Android phone (Android 8+; 10+ recommended).
+Requirements: JDK 17 and the Android SDK (platform 37).
 
 ```bash
-npx @react-native-community/cli@latest init ARController
-cd ARController
-
-# copy this folder's files over the template (same paths)
-cp -r ../ar-controller/App.tsx ../ar-controller/src .
-cp -r ../ar-controller/android/app/src/main/. android/app/src/main/
-
-npx react-native run-android        # or: cd android && ./gradlew assembleRelease
+cd ar-controller
+echo "sdk.dir=/path/to/Android/sdk" > local.properties
+./gradlew assembleRelease        # app/build/outputs/apk/release/app-release.apk (~2 MB, all CPUs)
 ```
 
-The package name must be `com.arcontroller` (the default for a project named `ARController`). If you
-use another name, change the `package` line in every `.kt` file and move the folder.
+Release builds are signed with the public React Native debug key in `app/debug.keystore` so they
+install over earlier AR Controller releases. Use your own keystore before publishing anywhere.
+
+The UI can be previewed in a desktop browser: open `app/src/main/assets/ui/index.html` (mock data).
 
 ## First-time setup on the phone
 
-Open **AR Controller** and grant everything in step 1:
+| Permission | Why |
+|---|---|
+| Display over other apps | floating icon, panel, assistant |
+| Microphone | "Hey AR" |
+| Accessibility | home/back/recents, lock, screenshot, tap/type/scroll, agent |
+| Contacts + Phone | "Ali ko call karo" |
+| Notifications | keeps the service alive |
+| Modify system settings (optional) | brightness, auto-rotate |
+| Do Not Disturb access (optional) | DND, silent mode |
 
-| Permission | Why | How |
-|---|---|---|
-| Display over other apps | floating icon + panel | system settings screen |
-| Microphone | "Hey AR" | normal dialog |
-| Accessibility | Home/Back/Recents, lock, screenshot, split screen, click/type/scroll | Settings → Accessibility → AR Controller |
-| Contacts + Phone | "Ali ko call karo" | normal dialog |
-| Notifications | keeps the service alive | normal dialog |
-| Freeform windows (optional) | apps open as a floating box | Developer options |
+**Android 13+ sideloaded APKs:** Accessibility shows *"Restricted setting"*. Open App info → menu →
+**Allow restricted settings**, then enable it again (the app links there).
 
-**Android 13+ sideloaded APKs:** Accessibility shows *"Restricted setting"*. Open App info →
-⋮ → **Allow restricted settings**, then enable it again (the app shows a shortcut for this).
-
-Then in step 2 add an API key for any OpenAI-compatible endpoint (OpenAI, Groq, OpenRouter, a local
-LLM…), set the model, and press **Start floating AR**.
+AI engine: **Groq** (free key, fast, recommended), **Free** (no key, ~1 answer / 45 s) or **Custom**
+(any OpenAI-compatible API). Simple commands never wait for the AI: the local parser handles them.
 
 ## Using it
 
-- **Floating icon**: drag anywhere (it snaps to the edge). Tap → the Control Panel expands *in place*
-  (no new screen). Colour shows voice state: purple = waiting for "Hey AR", green = listening,
-  orange = thinking, pink = speaking.
-- **Control Panel**: Hey AR (mic), Ask AI (type), **ALL APPS**, Torch, Vol +/−, Mute, Home, Back,
-  Recents, Notifications, Quick Settings, Screenshot, Lock, Split, Wi-Fi, Bluetooth, Location, Dialer,
-  Stop.
-- **ALL APPS**: grid of every launchable app with search. **Tap = floating window**,
-  long-press = normal full screen.
-- **Voice**: "Hey AR, YouTube kholo" (one breath) or "Hey AR" → "Ji, boliye" → your command.
-
-Example commands (English / Roman Urdu / Hindi):
-
-| Say | Does |
-|---|---|
-| open Instagram / YouTube kholo | opens the app |
-| float WhatsApp / Chrome floating mein kholo | opens it as a floating box |
-| call Ali / Ammi ko call karo | finds the contact and calls |
-| message Ahmed that I'm coming | SMS composer filled in |
-| WhatsApp Sara ke main 5 min mein aa raha hoon | WhatsApp chat with text filled in (with AI key) |
-| torch on / volume barhao / mute | device controls |
-| go home / back / recent apps / screenshot / lock screen | via Accessibility |
-| type hello / click Send / scroll down | acts on the current screen |
-| alarm 7:30 am / search weather Lahore / play Atif Aslam songs | intents |
-| anything else ("Pakistan ka capital kya hai?") | AI answers by voice |
-
-Without an API key, the offline `LocalParser` handles the simple patterns above; with a key, the LLM
-understands free-form requests and replies in your language.
+- **Floating icon (your photo)**: drag anywhere, it snaps to the edge. Tap → the Control Panel opens
+  in place. Ring colour = voice state (violet idle, green listening, amber thinking, blue speaking).
+- **Control Panel**: ask bar, media controls, quick toggles (torch, Wi-Fi, Bluetooth, data, rotate, DND,
+  ringer, stay awake), brightness/volume, navigation (home, back, recents, notifications, quick settings,
+  screenshot, lock, power), quick-open (camera, dialer, messages, contacts, gallery, calculator, calendar,
+  clock, maps, music, browser, settings), web window, close windows, read screen, scroll.
+- **All apps**: search + grid. **Tap = floating panel**, hold = full screen.
+- **Assistant orb** (bottom centre): tap to talk; "Hey AR" also opens the assistant sheet.
 
 ## How the floating app window works (native details)
 
@@ -123,15 +102,14 @@ into surfaces owned by the system. So `FloatingAppLauncher` asks the system wind
      have their own freeform modes; behaviour varies by ROM.
    - If the app is already open full screen, its existing task may keep its size — close it from
      Recents first.
-2. **Floating web box (no setup).** Without freeform, apps that have a web version (YouTube, WhatsApp,
+2. **Floating web panel (no setup).** Without freeform, apps that have a web version (YouTube, WhatsApp,
    Facebook, Instagram, TikTok, Gmail, Maps, Telegram, X, Chrome, Spotify…; see `WebApps` in
    `FloatingWebWindow.kt`) open as their website inside AR's own overlay window: drag by the title bar,
-   resize from the ◢ corner, minimise to a chip, ↗ to open the real app. Needs only "Display over other apps".
-3. **Freeform attempt** for apps without a web version (some OEM ROMs honour it); never split screen.
+   resize from the bottom corners or cycle small / medium / large / full, minimise to a chip, or open the real app. Needs only "Display over other apps".
+3. **No full-screen fallback:** apps without a web version need freeform mode; the panel says so instead of opening them full screen.
 
 Android 11+ blocks the hidden `setLaunchWindowingMode` call for normal apps, so the app uses
-`org.lsposed.hiddenapibypass` (added in `android/app/build.gradle`). Optional one-tap freeform switch:
-`adb shell pm grant com.arcontroller android.permission.WRITE_SECURE_SETTINGS`, then use the button in the app.
+`org.lsposed.hiddenapibypass` (in `app/build.gradle.kts`).
 
 ### "Do anything" agent
 

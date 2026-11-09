@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="style.css">
+<style>
+  html, body { background: transparent; height: 100%; overflow: hidden; }
+  .sheet { position: absolute; inset: 0; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column;
+    background: radial-gradient(120% 80% at 50% 0%, #16204a 0%, #0a0f1e 55%); border: 1px solid rgba(148, 163, 184, .18); padding: 20px 18px 16px; }
+  .lightbar { position: absolute; top: 0; left: 0; right: 0; height: 4px; opacity: .35; transition: opacity .3s;
+    background: linear-gradient(90deg, #22d3ee, #3b82f6, #8b5cf6, #22d3ee); background-size: 200% 100%; animation: flow 2s linear infinite; }
+  .lightbar.on { opacity: 1; height: 5px; }
+  .lightbar.think { background: linear-gradient(90deg, #f59e0b, #f97316, #f59e0b); background-size: 200% 100%; }
+  @keyframes flow { to { background-position: -200% 0; } }
+  .halo { position: relative; width: 52px; height: 52px; flex: none; }
+  .halo::before { content: ""; position: absolute; inset: -8px; border-radius: 50%; background: radial-gradient(circle, rgba(34, 211, 238, .45), transparent 70%); opacity: 0; transition: opacity .3s; }
+  .halo.on::before { opacity: 1; animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { transform: scale(.9); } 50% { transform: scale(1.12); } }
+  .halo .avatar { width: 52px; height: 52px; }
+  .state { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #67e8f9; font-weight: 700; }
+  .heard { font-size: 21px; font-weight: 650; line-height: 1.3; margin-top: 16px; letter-spacing: -.01em; min-height: 28px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .answer { color: #c7d2fe; font-size: 15px; margin-top: 8px; flex: 1; overflow-y: auto; user-select: text; }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; padding: 8px 12px; border-radius: 999px; background: rgba(255, 255, 255, .06); border: 1px solid var(--line); font-size: 12.5px; color: #d4d9f0; }
+  .bar { display: flex; align-items: center; gap: 8px; }
+  .bar input { flex: 1; min-width: 0; height: 46px; border-radius: 14px; padding: 0 14px; background: #0b1020; border: 1px solid var(--line); outline: none; user-select: text; }
+  .mic { width: 52px; height: 52px; border-radius: 50%; background: var(--grad); color: #fff; display: grid; place-items: center; flex: none;
+    box-shadow: 0 8px 22px -8px rgba(99, 102, 241, .8); transition: transform .15s; }
+  .mic:active { transform: scale(.92); }
+  .mic.live { background: linear-gradient(135deg, #22d3ee, #3b82f6); }
+  .x { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: rgba(255, 255, 255, .06); color: #cbd5e1; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="lightbar" id="light"></div>
+  <div class="row">
+    <div class="halo" id="halo"><div class="avatar"><img src="avatar.jpg" alt=""></div></div>
+    <div class="grow">
+      <div class="state" id="state">AR Assistant</div>
+      <div class="muted small" id="sub">Say a command or type below</div>
+    </div>
+    <div class="wave" id="wave"><span></span><span></span><span></span><span></span><span></span></div>
+    <button class="x" id="close" aria-label="Close"><i data-icon="x" data-size="sm"></i></button>
+  </div>
+  <div class="heard" id="heard">How can I help?</div>
+  <div class="answer" id="answer"></div>
+  <div class="chips" id="chips"></div>
+  <div class="bar">
+    <input id="input" placeholder="Type a command" autocomplete="off">
+    <button class="mic" id="mic" aria-label="Talk"><i data-icon="mic" data-size="lg"></i></button>
+  </div>
+</div>
+<script src="icons.js"></script>
+<script src="bridge.js"></script>
+<script>
+var SUGGEST = ['YouTube float karo', 'torch on', 'battery', 'next song', 'brightness full', 'WhatsApp kholo', 'screenshot'];
+var LABEL = { WAITING_WAKE_WORD: 'AR Assistant', LISTENING_COMMAND: 'Listening', THINKING: 'Thinking', SPEAKING: 'Speaking', OFF: 'AR Assistant' };
+
+function setState(s) {
+  var listening = s === 'LISTENING_COMMAND', thinking = s === 'THINKING';
+  $('#state').textContent = LABEL[s] || 'AR Assistant';
+  $('#light').className = 'lightbar' + (listening || thinking ? ' on' : '') + (thinking ? ' think' : '');
+  $('#halo').classList.toggle('on', listening);
+  $('#wave').classList.toggle('on', listening);
+  $('#mic').classList.toggle('live', listening);
+  $('#sub').textContent = listening ? 'Go ahead, I am listening' : thinking ? 'Working on it' : s === 'SPEAKING' ? '' : 'Say a command or type below';
+}
+
+AR.on('voice', function (e) {
+  setState(e.state);
+  if (e.state === 'LISTENING_COMMAND' && e.detail && /^[\u201c"]/.test(e.detail)) $('#heard').textContent = e.detail.replace(/[\u201c\u201d"]/g, '');
+});
+AR.on('heard', function (e) { $('#heard').textContent = e.text; $('#answer').textContent = ''; });
+AR.on('reply', function (e) { $('#answer').textContent = e.text; });
+AR.on('agent', function (e) { $('#answer').textContent = e.text; setState('THINKING'); });
+AR.on('status', function () {});
+
+paintIcons();
+$('#chips').innerHTML = SUGGEST.map(function (s) { return '<button class="chip">' + esc(s) + '</button>'; }).join('');
+$$('.chip').forEach(function (c) { c.onclick = function () { AR.host('say', c.textContent); }; });
+$('#close').onclick = function () { AR.host('close'); };
+var input = $('#input');
+input.onfocus = function () { AR.host('focus', '1'); };
+input.onblur = function () { AR.host('focus', '0'); };
+input.oninput = function () { $('#mic').innerHTML = icon(input.value ? 'send' : 'mic', 'lg'); };
+function submit() {
+  var t = input.value.trim();
+  if (!t) { AR.listen(); return; }
+  input.value = ''; input.oninput(); input.blur();
+  AR.host('say', t);
+}
+$('#mic').onclick = submit;
+input.onkeydown = function (e) { if (e.key === 'Enter') submit(); };
+setState('OFF');
+</script>
+</body>
+</html>
