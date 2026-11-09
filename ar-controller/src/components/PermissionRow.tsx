@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, gradients } from '../theme';
+import { colors } from '../theme';
 import { ScalePressable } from './ScalePressable';
 
 type Props = {
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   onChip: { backgroundColor: '#10B98122', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
   onText: { color: colors.ok, fontWeight: '800', fontSize: 12 },
   button: {
-    experimental_backgroundImage: gradients.primary,
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 8,

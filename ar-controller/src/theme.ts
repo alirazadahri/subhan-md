@@ -11,10 +11,3 @@ export const colors = {
   warn: '#F59E0B',
   danger: '#EF4444',
 };
-
-export const gradients = {
-  hero: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 50%, #2563EB 100%)',
-  primary: 'linear-gradient(90deg, #7C3AED, #2563EB)',
-  danger: 'linear-gradient(90deg, #EF4444, #DB2777)',
-  ok: 'linear-gradient(90deg, #10B981, #059669)',
-};

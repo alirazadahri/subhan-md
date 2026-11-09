@@ -58,6 +58,48 @@ object CrashReporter {
 
     fun read(ctx: Context): String? = runCatching { File(ctx.filesDir, FILE).takeIf { it.exists() }?.readText() }.getOrNull()
 
+    /**
+     * Native (C++) crashes bypass the Java handler. On Android 11+ the system records them; if the last
+     * exit was an unseen crash, save it and return true so the caller can show [CrashActivity].
+     */
+    fun captureLastExit(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        return try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val info = am.getHistoricalProcessExitReasons(ctx.packageName, 0, 1).firstOrNull() ?: return false
+            val prefs = ctx.getSharedPreferences("ar_safety", Context.MODE_PRIVATE)
+            if (info.timestamp <= prefs.getLong("last_exit_seen", 0L)) return false
+            prefs.edit().putLong("last_exit_seen", info.timestamp).commit()
+            // Ignore crashes of an older installed version.
+            val updated = ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime
+            if (info.timestamp < updated) return false
+            val crashed = info.reason == android.app.ApplicationExitInfo.REASON_CRASH ||
+                info.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE
+            if (!crashed) return false
+            // A Java crash already wrote a better report via the uncaught handler.
+            if (info.reason == android.app.ApplicationExitInfo.REASON_CRASH && read(ctx) != null) return true
+            val trace = runCatching {
+                info.traceInputStream?.use { s ->
+                    String(s.readBytes().take(60000).toByteArray(), Charsets.ISO_8859_1)
+                        .replace(Regex("[^\\x20-\\x7E\\n]"), " ")
+                        .replace(Regex(" {3,}"), " ")
+                        .lines().filter { it.isNotBlank() }.joinToString("\n").take(8000)
+                }
+            }.getOrNull()
+            val text = buildString {
+                append("AR Controller ").append(appVersion(ctx)).append(" · Android ").append(Build.VERSION.RELEASE)
+                append(" · ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n')
+                append(if (info.reason == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE) "NATIVE crash" else "Crash")
+                append(" (process ").append(info.processName).append(", status ").append(info.status).append(")\n")
+                append(info.description ?: "").append("\n\n").append(trace ?: "(no trace)")
+            }
+            runCatching { File(ctx.filesDir, FILE).writeText(text) }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun clear(ctx: Context) {
         runCatching { File(ctx.filesDir, FILE).delete() }
     }

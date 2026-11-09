@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
-  LayoutAnimation,
   Linking,
   ScrollView,
   StatusBar,
@@ -26,7 +25,7 @@ import {
   type NativeStatus,
   type RuntimeKey,
 } from './src/native/ARController';
-import { colors, gradients } from './src/theme';
+import { colors } from './src/theme';
 
 type Status = NativeStatus & Record<RuntimeKey, boolean>;
 
@@ -65,7 +64,6 @@ function Home() {
   const refresh = useCallback(async () => {
     try {
       const [nativeStatus, runtime] = await Promise.all([ARController.getStatus(), checkRuntime()]);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setStatus({ ...nativeStatus, ...runtime });
     } catch (e: any) {
       Alert.alert('AR Controller', e?.message ?? String(e));
@@ -136,7 +134,6 @@ function Home() {
     setBusy(true);
     try {
       const r = await ARController.runCommand(text.trim());
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setTestReply(`${r.reply}\n→ ${r.action}${r.target ? ` · ${r.target}` : ''}`);
     } catch (e: any) {
       setTestReply(`Error: ${e?.message ?? e}`);
@@ -461,8 +458,7 @@ const styles = StyleSheet.create({
   hero: {
     borderRadius: 28,
     padding: 20,
-    experimental_backgroundImage: gradients.hero,
-    boxShadow: '0px 12px 32px rgba(124, 58, 237, 0.45)',
+    backgroundColor: colors.primary,
   },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   logo: {
@@ -571,7 +567,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
-    experimental_backgroundImage: gradients.primary,
+    backgroundColor: colors.primary,
   },
   gradientButtonText: { color: '#fff', fontWeight: '900', fontSize: 15 },
 
@@ -594,7 +590,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    experimental_backgroundImage: gradients.primary,
+    backgroundColor: colors.primary,
   },
   sendText: { color: '#fff', fontSize: 18, fontWeight: '900' },
   replyBox: { marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: colors.cardAlt },
