@@ -38,9 +38,11 @@ class VoiceAssistant(private val ctx: Context, private val listener: Listener) :
     var state = State.OFF
         private set
 
-    // Speech engines transcribe "Hey AR" as "hey are", "hey r", "hey a.r." etc.
-    private val wakeRegex =
-        Regex("\\b(hey|hay|hi|ok|okay)[\\s,]+(a\\.?\\s?r\\.?|ar|are|aar|arr|air|r)(?=\\W|$)", RegexOption.IGNORE_CASE)
+    // Speech engines transcribe "Hey AR" as "hey are", "hey r", "hey yaar", "hey a.r." etc.; "AR …" at the start also counts.
+    private val wakeRegex = Regex(
+        "(?:\\b(?:hey|hay|hi|ok|okay|hello)[\\s,]+(?:a\\.?\\s?r\\.?|ar|are|aar|arr|air|r|yaar)|^\\s*(?:a\\.?\\s?r\\.?|aar))(?=\\W|$)",
+        RegexOption.IGNORE_CASE,
+    )
 
     fun start(wakeWordLoop: Boolean) {
         if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {

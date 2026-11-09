@@ -27,6 +27,7 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
             putBoolean("accessibilityConnected", ARAccessibilityService.instance != null)
             putBoolean("freeform", FloatingAppLauncher.isFreeformSupported(ctx))
             putBoolean("devOptionsEnabled", devOptionsEnabled())
+            putBoolean("canWriteSecureSettings", FloatingAppLauncher.canWriteSecureSettings(ctx))
             putBoolean("serviceRunning", OverlayService.isRunning)
             putInt("sdk", Build.VERSION.SDK_INT)
         }
@@ -64,6 +65,12 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
     private fun devOptionsEnabled() =
         Settings.Global.getInt(ctx.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0
 
+    /** One-tap freeform switch; works only after the one-time ADB grant of WRITE_SECURE_SETTINGS. */
+    @ReactMethod
+    fun enableFreeform(promise: Promise) {
+        promise.resolve(FloatingAppLauncher.enableFreeform(ctx))
+    }
+
     @ReactMethod
     fun startController(promise: Promise) {
         if (!canDrawOverlays()) {
@@ -91,6 +98,7 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
             putString("model", Prefs.model(ctx))
             putString("language", Prefs.language(ctx))
             putBoolean("wakeWordEnabled", Prefs.wakeWordEnabled(ctx))
+            putBoolean("freeAiEnabled", Prefs.freeAiEnabled(ctx))
         })
     }
 
@@ -105,6 +113,7 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
             language = str("language"),
             wakeWord = if (config.hasKey("wakeWordEnabled")) config.getBoolean("wakeWordEnabled") else null,
         )
+        if (config.hasKey("freeAiEnabled")) Prefs.setFreeAi(ctx, config.getBoolean("freeAiEnabled"))
         OverlayService.send(ctx, OverlayService.ACTION_RELOAD_SETTINGS)
         promise.resolve(true)
     }

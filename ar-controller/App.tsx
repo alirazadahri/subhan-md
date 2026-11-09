@@ -4,6 +4,7 @@ import {
   Alert,
   AppState,
   LayoutAnimation,
+  Linking,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -29,7 +30,18 @@ import { colors, gradients } from './src/theme';
 
 type Status = NativeStatus & Record<RuntimeKey, boolean>;
 
-const EXAMPLES = ['YouTube kholo', 'float WhatsApp', 'torch on', 'volume barhao', 'go home', 'Ali ko call karo'];
+const GROQ_URL = 'https://api.groq.com/openai/v1';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
+
+const EXAMPLES = [
+  'YouTube float karo',
+  'WhatsApp floating',
+  'torch on',
+  'Ali ko call karo',
+  'WhatsApp pe Ali ko hello bhejo',
+  'YouTube pe Atif Aslam ka gaana chalao',
+  'wifi off karo',
+];
 
 export default function App() {
   return (
@@ -96,6 +108,15 @@ function Home() {
     }
   };
 
+  const enableFreeformNow = async () => {
+    const ok = await ARController.enableFreeform();
+    Alert.alert(
+      ok ? 'Freeform on ✓' : 'Nahi ho saka',
+      ok ? 'Ab phone restart karein — phir har app floating box mein khulegi.' : 'Developer options se manually on karein.',
+    );
+    refresh();
+  };
+
   const saveConfig = async () => {
     await ARController.saveConfig({
       apiKey: apiKey || undefined,
@@ -103,6 +124,7 @@ function Home() {
       model: config.model,
       language: config.language,
       wakeWordEnabled: config.wakeWordEnabled,
+      freeAiEnabled: config.freeAiEnabled,
     });
     setApiKey('');
     setConfig(await ARController.getConfig());
@@ -236,12 +258,26 @@ function Home() {
       <FadeIn delay={160} style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.h2}>Floating app window</Text>
-          <Text style={status.freeform ? styles.allSet : styles.optional}>{status.freeform ? 'Enabled ✓' : 'Optional'}</Text>
+          <Text style={status.freeform ? styles.allSet : styles.optional}>
+            {status.freeform ? 'All apps ✓' : 'Web box mode'}
+          </Text>
         </View>
-        <Text style={styles.small}>Apps ko screen ke beech mein chhote box mein kholne ke liye:</Text>
+        <View style={styles.modeBox}>
+          <Text style={styles.modeTitle}>✓ Abhi bhi floating chalega</Text>
+          <Text style={styles.modeText}>
+            YouTube, WhatsApp, Facebook, Instagram, TikTok, Gmail, Maps, Telegram, X, Chrome… bina kisi setup ke floating
+            box mein khulti hain. Box ko title bar se drag karein, ◢ kone se resize, – se chhota, ✕ se band.
+          </Text>
+        </View>
+        <Text style={styles.small}>Har app (asli app) ko floating box mein kholne ke liye ek baar ye setup:</Text>
         <Step n={1} done={status.devOptionsEnabled} text="Settings → About phone → “Build number” par 7 baar tap" />
         <Step n={2} done={status.freeform} text="Developer options → “Enable freeform windows” + “Force activities to be resizable” on" />
         <Step n={3} done={status.freeform} text="Phone restart karein" />
+        {!status.freeform && status.canWriteSecureSettings ? (
+          <ScalePressable style={styles.gradientButton} onPress={enableFreeformNow}>
+            <Text style={styles.gradientButtonText}>⚡ One-tap enable (phir restart)</Text>
+          </ScalePressable>
+        ) : null}
         {!status.freeform ? (
           <ScalePressable style={styles.outlineButton} onPress={openFreeformSetup}>
             <Text style={styles.outlineButtonText}>
@@ -254,9 +290,35 @@ function Home() {
       {/* AI */}
       <FadeIn delay={240} style={styles.card}>
         <Text style={styles.h2}>AI brain</Text>
-        <Text style={styles.small}>
-          OpenAI, Groq, OpenRouter ya koi bhi OpenAI-compatible API. Key ke baghair bhi basic commands chalti hain.
-        </Text>
+        <View style={styles.switchRow}>
+          <View style={styles.flex}>
+            <Text style={styles.switchLabel}>Free AI (bina key)</Text>
+            <Text style={styles.switchSub}>
+              Key ke baghair AI chalegi (pollinations.ai). Apni key daalein to wo use hogi — zyada tez aur private.
+            </Text>
+          </View>
+          <Switch
+            value={config.freeAiEnabled}
+            onValueChange={freeAiEnabled => setConfig({ ...config, freeAiEnabled })}
+            trackColor={{ true: colors.primary, false: colors.border }}
+            thumbColor="#fff"
+          />
+        </View>
+        <Text style={styles.small}>Apni key (optional): OpenAI, Groq, OpenRouter ya koi bhi OpenAI-compatible API.</Text>
+        <View style={styles.tipBox}>
+          <Text style={styles.tipText}>
+            Free AI mein limit hai (har 45 sec mein 1 jawab), is liye “WhatsApp pe msg bhejo” jaise lambe kaam slow honge.
+            Tez aur free: Groq key (1 minute) — neeche button dabayein, key copy karke yahan paste karein, Save.
+          </Text>
+          <ScalePressable
+            style={styles.groqButton}
+            onPress={() => {
+              setConfig({ ...config, baseUrl: GROQ_URL, model: GROQ_MODEL });
+              Linking.openURL('https://console.groq.com/keys');
+            }}>
+            <Text style={styles.groqButtonText}>⚡ Free Groq key lein + setup</Text>
+          </ScalePressable>
+        </View>
         <Text style={styles.label}>API key {config.hasApiKey ? '· saved ✓' : ''}</Text>
         <TextInput
           style={styles.input}
@@ -446,6 +508,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   outlineButtonText: { color: '#C4B5FD', fontWeight: '800', fontSize: 14 },
+  modeBox: { marginTop: 10, borderRadius: 14, padding: 12, backgroundColor: '#10B9811A', borderWidth: 1, borderColor: '#10B98144' },
+  modeTitle: { color: colors.ok, fontWeight: '800', fontSize: 13 },
+  modeText: { color: colors.text, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  tipBox: { marginTop: 10, borderRadius: 14, padding: 12, backgroundColor: '#F59E0B14', borderWidth: 1, borderColor: '#F59E0B44' },
+  tipText: { color: colors.text, fontSize: 12, lineHeight: 18 },
+  groqButton: { marginTop: 10, borderRadius: 12, paddingVertical: 10, alignItems: 'center', backgroundColor: '#F59E0B' },
+  groqButtonText: { color: '#1F1300', fontWeight: '900', fontSize: 13 },
 
   label: { color: colors.muted, fontSize: 12, marginTop: 12, marginBottom: 6, fontWeight: '600' },
   input: {

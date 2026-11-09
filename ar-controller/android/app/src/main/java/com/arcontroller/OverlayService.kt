@@ -58,7 +58,7 @@ import kotlin.math.abs
  *  - the ALL APPS grid (tap = floating window, long-press = full screen),
  *  - the Ask-AI page, and the always-on "Hey AR" voice assistant.
  */
-class OverlayService : Service(), VoiceAssistant.Listener {
+class OverlayService : Service(), VoiceAssistant.Listener, ScreenAgent.Listener {
 
     companion object {
         const val ACTION_STOP = "com.arcontroller.action.STOP"
@@ -110,7 +110,8 @@ class OverlayService : Service(), VoiceAssistant.Listener {
         super.onCreate()
         isRunning = true
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        executor = CommandExecutor(this)
+        executor = CommandExecutor(this, this)
+        FloatingAppLauncher.ensureHiddenApi()
         startAsForeground()
         createBubble()
         voice = VoiceAssistant(this, this)
@@ -134,6 +135,8 @@ class OverlayService : Service(), VoiceAssistant.Listener {
     override fun onDestroy() {
         isRunning = false
         pulse?.cancel()
+        ScreenAgent.cancel()
+        FloatingWebWindow.closeAll()
         voice.stop()
         worker.shutdownNow()
         panel?.let { safeRemove(it) }
@@ -458,7 +461,8 @@ class OverlayService : Service(), VoiceAssistant.Listener {
             Tile("⚙", "Quick Set") { runCommand(AICommand("quick_settings")) },
             Tile("📸", "Screenshot") { runCommand(AICommand("screenshot")) },
             Tile("🔒", "Lock") { runCommand(AICommand("lock_screen")) },
-            Tile("🪟", "Split") { runCommand(AICommand("split_screen")) },
+            Tile("🌐", "Web box") { runCommand(AICommand("float_website", text = "https://www.google.com")) },
+            Tile("🗗", "Close box") { runCommand(AICommand("close_floating")) },
             Tile("📶", "Wi-Fi") { runCommand(AICommand("open_settings", "wifi")) },
             Tile("🅱", "Bluetooth") { runCommand(AICommand("open_settings", "bluetooth")) },
             Tile("📍", "Location") { runCommand(AICommand("open_settings", "location")) },
@@ -560,13 +564,14 @@ class OverlayService : Service(), VoiceAssistant.Listener {
 
     private fun launchFloating(app: InstalledApp) {
         closePanel()
-        val mode = FloatingAppLauncher.launchFloating(this, app.packageName)
+        val mode = FloatingAppLauncher.launchFloating(this, app.packageName, app.label)
         flash(
             when (mode) {
                 FloatingAppLauncher.Mode.FREEFORM -> "${app.label} floating window mein khul gayi"
-                FloatingAppLauncher.Mode.SPLIT -> "Freeform off hai — ${app.label} split screen mein"
-                FloatingAppLauncher.Mode.FULLSCREEN -> "Freeform/Accessibility off — full screen khola"
-                FloatingAppLauncher.Mode.FAILED -> "${app.label} open nahi ho saki"
+                FloatingAppLauncher.Mode.WEB -> "${app.label} floating box mein — drag/resize kar sakte hain"
+                FloatingAppLauncher.Mode.ATTEMPTED ->
+                    "${app.label} ka web version nahi. Har app box mein kholne ke liye app mein Floating setup karein"
+                FloatingAppLauncher.Mode.FULLSCREEN, FloatingAppLauncher.Mode.FAILED -> "${app.label} open nahi ho saki"
             },
         )
     }
@@ -674,11 +679,28 @@ class OverlayService : Service(), VoiceAssistant.Listener {
     }
 
     override fun onCommand(text: String) {
+        if (ScreenAgent.isRunning && Regex("^(stop|ruk|ruko|ruk jao|bas|cancel|band karo)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text.trim())) {
+            ScreenAgent.cancel()
+            voice.speak("Ruk gaya")
+            return
+        }
         voice.setThinking("“$text” — soch raha hoon…")
         worker.execute {
             val cmd = AIBrain.interpret(this, text)
             main.post { runCommand(cmd) }
         }
+    }
+
+    override fun onAgentProgress(text: String) {
+        setBubbleColor(VoiceAssistant.State.THINKING)
+        lastStatus = "⚙ $text"
+        statusText?.text = lastStatus
+    }
+
+    override fun onAgentDone(reply: String) {
+        lastStatus = reply
+        statusText?.text = reply
+        voice.speak(reply)
     }
 
     /** Executes a command; hides the panel first when the action affects what's on screen. */

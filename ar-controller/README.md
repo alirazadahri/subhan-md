@@ -123,9 +123,23 @@ into surfaces owned by the system. So `FloatingAppLauncher` asks the system wind
      have their own freeform modes; behaviour varies by ROM.
    - If the app is already open full screen, its existing task may keep its size — close it from
      Recents first.
-2. **Split screen (fallback).** Without freeform, the Accessibility service triggers
-   `GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN` and the app is launched with `FLAG_ACTIVITY_LAUNCH_ADJACENT`.
-3. **Full screen** if neither is available.
+2. **Floating web box (no setup).** Without freeform, apps that have a web version (YouTube, WhatsApp,
+   Facebook, Instagram, TikTok, Gmail, Maps, Telegram, X, Chrome, Spotify…; see `WebApps` in
+   `FloatingWebWindow.kt`) open as their website inside AR's own overlay window: drag by the title bar,
+   resize from the ◢ corner, minimise to a chip, ↗ to open the real app. Needs only "Display over other apps".
+3. **Freeform attempt** for apps without a web version (some OEM ROMs honour it); never split screen.
+
+Android 11+ blocks the hidden `setLaunchWindowingMode` call for normal apps, so the app uses
+`org.lsposed.hiddenapibypass` (added in `android/app/build.gradle`). Optional one-tap freeform switch:
+`adb shell pm grant com.arcontroller android.permission.WRITE_SECURE_SETTINGS`, then use the button in the app.
+
+### "Do anything" agent
+
+Requests that need several taps ("WhatsApp pe Ali ko hello bhejo", "wifi off karo") become `agent_task`.
+`ScreenAgent` loops: read the screen via Accessibility → ask the AI for the next step (open_app / tap /
+type / enter / scroll / back) → perform it, up to 15 steps. Say "ruk jao"/"stop" to cancel.
+Without a key the free Pollinations endpoint is used, but it allows ~1 reply per 45 s, so the agent is
+slow; a free Groq key (`https://api.groq.com/openai/v1`, `llama-3.3-70b-versatile`) makes it fast.
 
 Background activity launches from the service are allowed because the app holds the overlay
 permission and has a visible overlay window.

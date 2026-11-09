@@ -12,6 +12,7 @@ object Prefs {
     const val KEY_MODEL = "model"
     const val KEY_LANGUAGE = "language"
     const val KEY_WAKE_WORD = "wakeWordEnabled"
+    const val KEY_FREE_AI = "freeAiEnabled"
 
     const val DEFAULT_BASE_URL = "https://api.openai.com/v1"
     const val DEFAULT_MODEL = "gpt-4o-mini"
@@ -26,6 +27,9 @@ object Prefs {
     fun model(ctx: Context) = (prefs(ctx).getString(KEY_MODEL, null) ?: "").ifBlank { DEFAULT_MODEL }
     fun language(ctx: Context) = (prefs(ctx).getString(KEY_LANGUAGE, null) ?: "").ifBlank { DEFAULT_LANGUAGE }
     fun wakeWordEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_WAKE_WORD, true)
+    fun freeAiEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_FREE_AI, true)
+
+    fun setFreeAi(ctx: Context, enabled: Boolean) = prefs(ctx).edit().putBoolean(KEY_FREE_AI, enabled).apply()
 
     fun save(
         ctx: Context,

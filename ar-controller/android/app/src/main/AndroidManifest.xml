@@ -1,4 +1,9 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Optional: lets the app switch on freeform windows itself after a one-time
+         `adb shell pm grant com.arcontroller android.permission.WRITE_SECURE_SETTINGS`. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
     <!-- AI requests -->
     <uses-permission android:name="android.permission.INTERNET" />

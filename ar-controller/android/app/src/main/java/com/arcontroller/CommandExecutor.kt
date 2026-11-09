@@ -13,10 +13,25 @@ import android.os.Build
 import android.provider.AlarmClock
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 
-/** Executes an [AICommand] on the device and returns the sentence AR should speak back. */
-class CommandExecutor(private val ctx: Context) {
+/** Executes an [AICommand] on the device and returns the sentence AR should speak back. Main thread only. */
+class CommandExecutor(private val ctx: Context, private val agentListener: ScreenAgent.Listener? = null) {
+
+    /** Used when commands come from the app screen (no overlay to show progress). */
+    private class ToastAgentListener(private val ctx: Context) : ScreenAgent.Listener {
+        override fun onAgentProgress(text: String) = Toast.makeText(ctx, "AR: $text", Toast.LENGTH_SHORT).show()
+        override fun onAgentDone(reply: String) = Toast.makeText(ctx, "AR: $reply", Toast.LENGTH_LONG).show()
+    }
+
+    private fun floatMessage(label: String, mode: FloatingAppLauncher.Mode): String? = when (mode) {
+        FloatingAppLauncher.Mode.FREEFORM -> null
+        FloatingAppLauncher.Mode.WEB -> "$label floating window mein"
+        FloatingAppLauncher.Mode.ATTEMPTED ->
+            "$label ka web version nahi hai. Box mein kholne ke liye app mein \"Floating app window\" setup ek baar karein"
+        else -> "$label open nahi ho saki"
+    }
 
     fun execute(cmd: AICommand): String {
         val reply = cmd.reply
@@ -24,6 +39,19 @@ class CommandExecutor(private val ctx: Context) {
             when (cmd.action) {
                 "open_app" -> openApp(cmd.target, floating = false) ?: reply ?: "Opening ${cmd.target}"
                 "float_app" -> openApp(cmd.target, floating = true) ?: reply ?: "${cmd.target} floating window mein"
+                "float_website" -> {
+                    FloatingAppLauncher.floatWebsite(ctx, cmd.text ?: cmd.target ?: "google.com")
+                    reply ?: "Floating window mein khol diya"
+                }
+                "close_floating" -> {
+                    FloatingWebWindow.closeAll()
+                    reply ?: "Floating windows band"
+                }
+                "agent_task" -> {
+                    val goal = cmd.text ?: cmd.target ?: ""
+                    ScreenAgent.start(ctx, goal, agentListener ?: ToastAgentListener(ctx))
+                    reply ?: "Theek hai, kar raha hoon…"
+                }
                 "call" -> call(cmd.target) ?: reply ?: "Calling ${cmd.target}"
                 "send_sms" -> sms(cmd.target, cmd.text) ?: reply ?: "Message ready hai, send dabayein"
                 "whatsapp_message" -> whatsapp(cmd.target, cmd.text) ?: reply ?: "WhatsApp message ready hai"
@@ -71,9 +99,11 @@ class CommandExecutor(private val ctx: Context) {
     private fun openApp(name: String?, floating: Boolean): String? {
         if (name.isNullOrBlank()) return "Kaunsi app kholun?"
         val app = AppRepository.findByName(ctx, name) ?: return "\"$name\" app nahi mili"
-        val mode = if (floating) FloatingAppLauncher.launchFloating(ctx, app.packageName)
-        else FloatingAppLauncher.launchFullscreen(ctx, app.packageName)
-        return if (mode == FloatingAppLauncher.Mode.FAILED) "${app.label} open nahi ho saki" else null
+        if (!floating) {
+            val mode = FloatingAppLauncher.launchFullscreen(ctx, app.packageName)
+            return if (mode == FloatingAppLauncher.Mode.FAILED) "${app.label} open nahi ho saki" else null
+        }
+        return floatMessage(app.label, FloatingAppLauncher.launchFloating(ctx, app.packageName, app.label))
     }
 
     private fun call(target: String?): String? {

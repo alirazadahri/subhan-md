@@ -6,6 +6,7 @@ export type NativeStatus = {
   accessibilityConnected: boolean;
   freeform: boolean;
   devOptionsEnabled: boolean;
+  canWriteSecureSettings: boolean;
   serviceRunning: boolean;
   sdk: number;
 };
@@ -16,6 +17,7 @@ export type AIConfig = {
   model: string;
   language: string;
   wakeWordEnabled: boolean;
+  freeAiEnabled: boolean;
 };
 
 export type SaveConfig = Partial<Omit<AIConfig, 'hasApiKey'>> & { apiKey?: string };
@@ -29,6 +31,8 @@ type ARControllerNative = {
   openAppDetails(): void;
   /** Resolves "developer" when Developer options opened, or "about" when they're still hidden. */
   openDeveloperOptions(): Promise<'developer' | 'about'>;
+  /** Needs the one-time ADB grant of WRITE_SECURE_SETTINGS; resolves false otherwise. */
+  enableFreeform(): Promise<boolean>;
   startController(): Promise<boolean>;
   stopController(): void;
   getConfig(): Promise<AIConfig>;
@@ -53,6 +57,7 @@ export const ARController = {
   openAccessibilitySettings: () => n.openAccessibilitySettings(),
   openAppDetails: () => n.openAppDetails(),
   openDeveloperOptions: () => n.openDeveloperOptions(),
+  enableFreeform: () => n.enableFreeform(),
   startController: () => n.startController(),
   stopController: () => n.stopController(),
   getConfig: () => n.getConfig(),
