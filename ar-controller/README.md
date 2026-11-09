@@ -139,7 +139,7 @@ Requests that need several taps ("WhatsApp pe Ali ko hello bhejo", "wifi off kar
 `ScreenAgent` loops: read the screen via Accessibility → ask the AI for the next step (open_app / tap /
 type / enter / scroll / back) → perform it, up to 15 steps. Say "ruk jao"/"stop" to cancel.
 Without a key the free Pollinations endpoint is used, but it allows ~1 reply per 45 s, so the agent is
-slow; a free Groq key (`https://api.groq.com/openai/v1`, `llama-3.3-70b-versatile`) makes it fast.
+slow; a free Groq key (`https://api.groq.com/openai/v1`, `openai/gpt-oss-120b`) makes it fast.
 
 Background activity launches from the service are allowed because the app holds the overlay
 permission and has a visible overlay window.

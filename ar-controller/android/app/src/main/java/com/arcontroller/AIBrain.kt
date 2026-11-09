@@ -142,7 +142,7 @@ Rules:
     }
 
     /** POSTs a chat completion and returns the assistant message content. */
-    private fun chat(ctx: Context, messages: JSONArray): String {
+    private fun chat(ctx: Context, messages: JSONArray, retried: Boolean = false, jsonMode: Boolean = true): String {
         val key = Prefs.apiKey(ctx)
         val useKey = key.isNotBlank()
         val url = if (useKey) "${Prefs.baseUrl(ctx)}/chat/completions" else FREE_URL
@@ -151,7 +151,7 @@ Rules:
             .put("messages", messages)
         if (useKey) {
             body.put("temperature", 0.2)
-            body.put("response_format", JSONObject().put("type", "json_object"))
+            if (jsonMode) body.put("response_format", JSONObject().put("type", "json_object"))
         }
 
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -162,21 +162,58 @@ Rules:
             setRequestProperty("Content-Type", "application/json")
             if (useKey) setRequestProperty("Authorization", "Bearer $key")
         }
+        val code: Int
+        val raw: String
         try {
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
-            val code = conn.responseCode
+            code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val raw = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            if (!useKey && (code == 402 || code == 429)) {
-                val secs = Regex("(?i)retry after (\\d+)").find(raw)?.groupValues?.get(1)?.toIntOrNull() ?: 45
-                throw RateLimited(secs)
-            }
-            if (code !in 200..299) throw IllegalStateException("HTTP $code ${raw.take(120)}")
-            return JSONObject(raw).getJSONArray("choices").getJSONObject(0)
-                .getJSONObject("message").getString("content")
+            raw = stream?.bufferedReader()?.use { it.readText() } ?: ""
         } finally {
             conn.disconnect()
         }
+        if (!useKey && (code == 402 || code == 429)) {
+            val secs = Regex("(?i)retry after (\\d+)").find(raw)?.groupValues?.get(1)?.toIntOrNull() ?: 45
+            throw RateLimited(secs)
+        }
+        if (useKey && !retried) {
+            // Providers retire models; switch to one the key can actually use and remember it.
+            if (code == 404 || (code == 400 && raw.contains("model", ignoreCase = true) && raw.contains("decommission", ignoreCase = true))) {
+                pickAvailableModel(ctx, key)?.let { model ->
+                    Prefs.save(ctx, null, null, model, null, null)
+                    return chat(ctx, messages, retried = true, jsonMode = jsonMode)
+                }
+            }
+            // Some models reject JSON mode; retry as plain text (we extract the JSON ourselves).
+            if (code == 400 && jsonMode && raw.contains("response_format", ignoreCase = true)) {
+                return chat(ctx, messages, retried = true, jsonMode = false)
+            }
+        }
+        if (code !in 200..299) throw IllegalStateException("HTTP $code ${raw.take(160)}")
+        return JSONObject(raw).getJSONArray("choices").getJSONObject(0)
+            .getJSONObject("message").getString("content")
+    }
+
+    /** Lists the provider's models and picks the best general chat model available to this key. */
+    private fun pickAvailableModel(ctx: Context, key: String): String? = try {
+        val conn = (URL("${Prefs.baseUrl(ctx)}/models").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            setRequestProperty("Authorization", "Bearer $key")
+        }
+        val ids = try {
+            val data = JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).getJSONArray("data")
+            (0 until data.length()).map { data.getJSONObject(it).getString("id") }
+        } finally {
+            conn.disconnect()
+        }
+        val chatIds = ids.filterNot { id ->
+            listOf("whisper", "tts", "guard", "embed", "audio", "image", "vision", "moderation", "orpheus").any { id.contains(it, true) }
+        }
+        val preferred = listOf("gpt-oss-120b", "llama-3.3-70b", "llama-4", "qwen", "gpt-oss-20b", "llama-3.1-8b", "gpt-4o-mini")
+        preferred.firstNotNullOfOrNull { p -> chatIds.firstOrNull { it.contains(p, true) } } ?: chatIds.firstOrNull()
+    } catch (_: Throwable) {
+        null
     }
 
     private fun extractJson(s: String): String {

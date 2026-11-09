@@ -30,7 +30,7 @@ import { colors } from './src/theme';
 type Status = NativeStatus & Record<RuntimeKey, boolean>;
 
 const GROQ_URL = 'https://api.groq.com/openai/v1';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'openai/gpt-oss-120b';
 
 const EXAMPLES = [
   'YouTube float karo',
@@ -134,7 +134,7 @@ function Home() {
     setBusy(true);
     try {
       const r = await ARController.runCommand(text.trim());
-      setTestReply(`${r.reply}\n→ ${r.action}${r.target ? ` · ${r.target}` : ''}`);
+      setTestReply(`${r.reply}\n> ${r.action}${r.target ? ` · ${r.target}` : ''}`);
     } catch (e: any) {
       setTestReply(`Error: ${e?.message ?? e}`);
     } finally {
@@ -238,7 +238,7 @@ function Home() {
           icon="♿"
           tint="#3B82F6"
           title="Accessibility"
-          description="Settings → Installed/Downloaded apps → AR Controller → On"
+          description="Settings > Installed/Downloaded apps > AR Controller > On"
           granted={status.accessibility}
           actionLabel="Open"
           onPress={() => ARController.openAccessibilitySettings()}
@@ -270,7 +270,7 @@ function Home() {
         {!status.accessibility && status.sdk >= 33 ? (
           <ScalePressable onPress={() => ARController.openAppDetails()}>
             <Text style={styles.hint}>
-              “Restricted setting” aa raha hai? Yahan tap → ⋮ menu → “Allow restricted settings”, phir Accessibility on
+              “Restricted setting” aa raha hai? Yahan tap - ⋮ menu - “Allow restricted settings”, phir Accessibility on
               karein.
             </Text>
           </ScalePressable>
@@ -293,8 +293,8 @@ function Home() {
           </Text>
         </View>
         <Text style={styles.small}>Har app (asli app) ko floating box mein kholne ke liye ek baar ye setup:</Text>
-        <Step n={1} done={status.devOptionsEnabled} text="Settings → About phone → “Build number” par 7 baar tap" />
-        <Step n={2} done={status.freeform} text="Developer options → “Enable freeform windows” + “Force activities to be resizable” on" />
+        <Step n={1} done={status.devOptionsEnabled} text="Settings > About phone > “Build number” par 7 baar tap" />
+        <Step n={2} done={status.freeform} text="Developer options > “Enable freeform windows” + “Force activities to be resizable” on" />
         <Step n={3} done={status.freeform} text="Phone restart karein" />
         {!status.freeform && status.canWriteSecureSettings ? (
           <ScalePressable style={styles.gradientButton} onPress={enableFreeformNow}>
@@ -433,7 +433,7 @@ function Home() {
         ) : null}
       </FadeIn>
 
-      <Text style={styles.footer}>Tip: floating “AR” icon par tap → ALL APPS → kisi app par tap = floating window</Text>
+      <Text style={styles.footer}>Tip: floating “AR” icon par tap - ALL APPS - kisi app par tap = floating window</Text>
     </ScrollView>
   );
 }
