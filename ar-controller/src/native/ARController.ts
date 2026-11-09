@@ -5,6 +5,7 @@ export type NativeStatus = {
   accessibility: boolean;
   accessibilityConnected: boolean;
   freeform: boolean;
+  devOptionsEnabled: boolean;
   serviceRunning: boolean;
   sdk: number;
 };
@@ -26,7 +27,8 @@ type ARControllerNative = {
   openOverlaySettings(): void;
   openAccessibilitySettings(): void;
   openAppDetails(): void;
-  openDeveloperOptions(): void;
+  /** Resolves "developer" when Developer options opened, or "about" when they're still hidden. */
+  openDeveloperOptions(): Promise<'developer' | 'about'>;
   startController(): Promise<boolean>;
   stopController(): void;
   getConfig(): Promise<AIConfig>;
@@ -41,7 +43,23 @@ if (!native && Platform.OS === 'android') {
   console.warn('ARController native module missing — did you add ARControllerPackage to MainApplication.kt?');
 }
 
-export const ARController = native as ARControllerNative;
+const n = native as ARControllerNative;
+
+// Every wrapper drops extra arguments: passing a native method straight to onPress forwards the press
+// event, and an argument-count mismatch on a native method is a fatal error that closes the app.
+export const ARController = {
+  getStatus: () => n.getStatus(),
+  openOverlaySettings: () => n.openOverlaySettings(),
+  openAccessibilitySettings: () => n.openAccessibilitySettings(),
+  openAppDetails: () => n.openAppDetails(),
+  openDeveloperOptions: () => n.openDeveloperOptions(),
+  startController: () => n.startController(),
+  stopController: () => n.stopController(),
+  getConfig: () => n.getConfig(),
+  saveConfig: (config: SaveConfig) => n.saveConfig(config),
+  clearApiKey: () => n.clearApiKey(),
+  runCommand: (text: string) => n.runCommand(text),
+};
 
 /** Runtime ("dangerous") permissions requested with the normal Android dialog. */
 export const RUNTIME_PERMISSIONS = {

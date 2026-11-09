@@ -16,6 +16,11 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -89,6 +94,8 @@ class OverlayService : Service(), VoiceAssistant.Listener {
     private lateinit var bubbleBg: GradientDrawable
 
     private var panel: PanelRoot? = null
+    private var panelCard: View? = null
+    private var pulse: ValueAnimator? = null
     private var panelParams: WindowManager.LayoutParams? = null
     private var pageContainer: FrameLayout? = null
     private var statusText: TextView? = null
@@ -126,6 +133,7 @@ class OverlayService : Service(), VoiceAssistant.Listener {
 
     override fun onDestroy() {
         isRunning = false
+        pulse?.cancel()
         voice.stop()
         worker.shutdownNow()
         panel?.let { safeRemove(it) }
@@ -235,7 +243,7 @@ class OverlayService : Service(), VoiceAssistant.Listener {
                     downX = e.rawX; downY = e.rawY
                     startX = bubbleParams.x; startY = bubbleParams.y
                     dragging = false
-                    v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(80).start()
+                    v.animate().scaleX(0.9f).scaleY(0.9f).setStartDelay(0).setDuration(80).start()
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
@@ -248,7 +256,7 @@ class OverlayService : Service(), VoiceAssistant.Listener {
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
+                    v.animate().scaleX(1f).scaleY(1f).setStartDelay(0).setDuration(80).start()
                     if (dragging) snapToEdge(v) else if (e.actionMasked == MotionEvent.ACTION_UP) openPanel()
                 }
             }
@@ -279,6 +287,23 @@ class OverlayService : Service(), VoiceAssistant.Listener {
             else -> intArrayOf(Color.parseColor("#7C3AED"), Color.parseColor("#2563EB"))
         }
         bubbleBg.colors = colors
+        // Gentle "breathing" pulse while AR is listening for a command.
+        val b = bubble ?: return
+        if (state == VoiceAssistant.State.LISTENING_COMMAND) {
+            if (pulse == null) {
+                pulse = ValueAnimator.ofFloat(1f, 1.12f).apply {
+                    duration = 600
+                    repeatMode = ValueAnimator.REVERSE
+                    repeatCount = ValueAnimator.INFINITE
+                    addUpdateListener { b.scaleX = it.animatedValue as Float; b.scaleY = it.animatedValue as Float }
+                    start()
+                }
+            }
+        } else {
+            pulse?.cancel()
+            pulse = null
+            b.scaleX = 1f; b.scaleY = 1f
+        }
     }
 
     // ------------------------------------------------------------------ control panel
@@ -293,7 +318,13 @@ class OverlayService : Service(), VoiceAssistant.Listener {
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded("#F20F172A", 24f, stroke = "#334155")
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.parseColor("#F5161E3A"), Color.parseColor("#F20B1022")),
+            ).apply {
+                cornerRadius = 26f * resources.displayMetrics.density
+                setStroke(dp(1), Color.parseColor("#3B4A75"))
+            }
             setPadding(dp(14), dp(12), dp(14), dp(14))
             elevation = dp(12).toFloat()
         }
@@ -354,18 +385,35 @@ class OverlayService : Service(), VoiceAssistant.Listener {
         val fromRight = bubbleParams.x > screenW() / 2
         card.pivotX = if (fromRight) panelW.toFloat() else 0f
         card.pivotY = 0f
-        card.scaleX = 0.3f; card.scaleY = 0.3f; card.alpha = 0f
-        card.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(180).start()
+        card.scaleX = 0.4f; card.scaleY = 0.4f; card.alpha = 0f
+        card.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260)
+            .setInterpolator(OvershootInterpolator(0.9f)).start()
+        panelCard = card
     }
 
     private fun closePanel() {
-        panel?.let { safeRemove(it) }
+        val root = panel
+        val card = panelCard
+        if (root != null && card != null) {
+            // Shrink back toward the icon, then remove the window.
+            card.animate().scaleX(0.6f).scaleY(0.6f).alpha(0f).setDuration(140)
+                .setInterpolator(AccelerateInterpolator())
+                .withEndAction { safeRemove(root) }.start()
+        } else {
+            root?.let { safeRemove(it) }
+        }
         panel = null
+        panelCard = null
         panelParams = null
         pageContainer = null
         statusText = null
         askReplyText = null
-        bubble?.visibility = View.VISIBLE
+        bubble?.let { b ->
+            b.visibility = View.VISIBLE
+            b.scaleX = 0.5f; b.scaleY = 0.5f; b.alpha = 0f
+            b.animate().scaleX(1f).scaleY(1f).alpha(1f).setStartDelay(80).setDuration(200)
+                .setInterpolator(OvershootInterpolator()).start()
+        }
     }
 
     private fun showPage(page: Page) {
@@ -373,13 +421,15 @@ class OverlayService : Service(), VoiceAssistant.Listener {
         container.removeAllViews()
         // Only pages with text input take keyboard focus; otherwise keys go to the app underneath.
         setPanelFocusable(page != Page.FUNCTIONS)
-        container.addView(
-            when (page) {
-                Page.FUNCTIONS -> buildFunctionsPage()
-                Page.APPS -> buildAppsPage()
-                Page.ASK -> buildAskPage()
-            },
-        )
+        val view = when (page) {
+            Page.FUNCTIONS -> buildFunctionsPage()
+            Page.APPS -> buildAppsPage()
+            Page.ASK -> buildAskPage()
+        }
+        container.addView(view)
+        view.alpha = 0f
+        view.translationX = dp(if (page == Page.FUNCTIONS) -24 else 24).toFloat()
+        view.animate().alpha(1f).translationX(0f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
     }
 
     private fun setPanelFocusable(focusable: Boolean) {
@@ -424,6 +474,7 @@ class OverlayService : Service(), VoiceAssistant.Listener {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = rounded(t.accent, 16f)
+                foreground = ripple(16f)
                 setPadding(dp(2), dp(10), dp(2), dp(8))
                 addView(label(t.icon, 22f, "#FFFFFF").apply { gravity = Gravity.CENTER })
                 addView(label(t.title, 10.5f, "#E2E8F0").apply {
@@ -589,6 +640,7 @@ class OverlayService : Service(), VoiceAssistant.Listener {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(dp(2), dp(6), dp(2), dp(4))
+                foreground = ripple(14f)
                 addView(ImageView(context), LinearLayout.LayoutParams(dp(44), dp(44)))
                 addView(label("", 10.5f, "#E2E8F0").apply {
                     gravity = Gravity.CENTER
@@ -661,6 +713,12 @@ class OverlayService : Service(), VoiceAssistant.Listener {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun screenW() = resources.displayMetrics.widthPixels
     private fun screenH() = resources.displayMetrics.heightPixels
+
+    private fun ripple(radiusDp: Float) = RippleDrawable(
+        ColorStateList.valueOf(Color.parseColor("#40FFFFFF")),
+        null,
+        rounded("#FFFFFFFF", radiusDp),
+    )
 
     private fun rounded(color: String, radiusDp: Float, stroke: String? = null) = GradientDrawable().apply {
         setColor(Color.parseColor(color))

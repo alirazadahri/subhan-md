@@ -26,6 +26,7 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
             putBoolean("accessibility", ARAccessibilityService.isEnabled(ctx))
             putBoolean("accessibilityConnected", ARAccessibilityService.instance != null)
             putBoolean("freeform", FloatingAppLauncher.isFreeformSupported(ctx))
+            putBoolean("devOptionsEnabled", devOptionsEnabled())
             putBoolean("serviceRunning", OverlayService.isRunning)
             putInt("sdk", Build.VERSION.SDK_INT)
         }
@@ -34,7 +35,10 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
 
     @ReactMethod
     fun openOverlaySettings() {
-        start(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")))
+        start(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")),
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+        )
     }
 
     @ReactMethod
@@ -46,8 +50,19 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
         start(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
     }
 
+    /** Developer options are hidden until "Build number" is tapped 7 times, so open About phone in that case. */
     @ReactMethod
-    fun openDeveloperOptions() = start(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+    fun openDeveloperOptions(promise: Promise) {
+        if (devOptionsEnabled() && start(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), fallbackToSettings = false)) {
+            promise.resolve("developer")
+        } else {
+            start(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS))
+            promise.resolve("about")
+        }
+    }
+
+    private fun devOptionsEnabled() =
+        Settings.Global.getInt(ctx.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0
 
     @ReactMethod
     fun startController(promise: Promise) {
@@ -120,8 +135,19 @@ class ARControllerModule(private val ctx: ReactApplicationContext) : ReactContex
     private fun canDrawOverlays() =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)
 
-    private fun start(intent: Intent) {
-        ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    /** Tries each intent in order (OEM ROMs sometimes lack a screen). Never throws. */
+    private fun start(vararg intents: Intent, fallbackToSettings: Boolean = true): Boolean {
+        val activity = ctx.currentActivity
+        val candidates = if (fallbackToSettings) intents.toList() + Intent(Settings.ACTION_SETTINGS) else intents.toList()
+        for ((i, intent) in candidates.withIndex()) {
+            try {
+                if (activity != null) activity.startActivity(intent)
+                else ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return i < intents.size
+            } catch (_: Throwable) {
+            }
+        }
+        return false
     }
 
     override fun invalidate() {
