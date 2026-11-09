@@ -329,7 +329,8 @@ class FloatingWebWindow private constructor(
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
-            if (desktop) userAgentString = DESKTOP_UA
+            // Without the WebView marker ("; wv") sites serve their normal mobile page instead of "get the app".
+            userAgentString = if (desktop) DESKTOP_UA else userAgentString.replace("; wv)", ")")
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
@@ -338,12 +339,18 @@ class FloatingWebWindow private constructor(
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
                 if (uri.scheme == "http" || uri.scheme == "https") return false
-                // intent://, tel:, mailto:, whatsapp: … hand off to the system.
-                try {
-                    val intent = if (uri.scheme == "intent") Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME)
-                    else Intent(Intent.ACTION_VIEW, uri)
-                    ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                } catch (_: Throwable) {
+                // Sites like YouTube/Instagram redirect to "open in app" links (intent://, vnd.youtube:, …).
+                // Handing those to Android opened the full-screen app, so stay inside the panel instead:
+                // follow the web fallback if there is one, otherwise ignore. Only phone/mail links leave.
+                if (uri.scheme == "intent") {
+                    runCatching { Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME) }.getOrNull()
+                        ?.getStringExtra("browser_fallback_url")
+                        ?.takeIf { it.startsWith("http") }
+                        ?.let { view.loadUrl(it) }
+                    return true
+                }
+                if (uri.scheme == "tel" || uri.scheme == "mailto" || uri.scheme == "sms") {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }
                 return true
             }

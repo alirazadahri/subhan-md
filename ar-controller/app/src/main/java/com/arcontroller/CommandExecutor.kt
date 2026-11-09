@@ -229,6 +229,9 @@ class CommandExecutor(private val ctx: Context, private val agentListener: Scree
     private fun extraAction(cmd: AICommand): String? {
         val r = cmd.reply
         return when (cmd.action) {
+            "reply_message" -> replyMessage(cmd.target, cmd.text)
+            "read_messages" -> readMessages()
+            "read_calls" -> readCalls()
             "torch_toggle" -> toggleTorch()
             "media_play_pause" -> media(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE).let { r ?: "Play / pause" }
             "media_next" -> media(KeyEvent.KEYCODE_MEDIA_NEXT).let { r ?: "Agla gaana" }
@@ -258,6 +261,48 @@ class CommandExecutor(private val ctx: Context, private val agentListener: Scree
             "open_browser" -> openCategory(Intent.CATEGORY_APP_BROWSER) ?: r ?: "Browser"
             "open_clock" -> open(Intent(AlarmClock.ACTION_SHOW_ALARMS)) ?: r ?: "Clock"
             else -> null
+        }
+    }
+
+    /** Set when "reply" was said without text; the next utterance becomes the reply. */
+    var pendingReplyTo: String? = null
+
+    private fun replyMessage(target: String?, text: String?): String {
+        if (!NotificationWatcher.isEnabled(ctx)) {
+            open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            return "Reply ke liye AR Controller ko Notification access dein"
+        }
+        val who = target ?: NotificationWatcher.latestSender()
+        if (!NotificationWatcher.canReply(who)) {
+            return if (who == null) "Abhi koi naya WhatsApp message nahi jis ka reply karun"
+            else "$who ka koi naya message nahi mila. Reply sirf naye message ki notification par hota hai"
+        }
+        if (text.isNullOrBlank()) {
+            pendingReplyTo = who ?: ""
+            return ASK_PREFIX + "$who ko kya reply karun?"
+        }
+        val sent = NotificationWatcher.reply(ctx, who, text) ?: return "Reply nahi gaya"
+        return "$sent ko reply bhej diya"
+    }
+
+    private fun readMessages(): String {
+        val arr = Store.messages(ctx)
+        val since = System.currentTimeMillis() - 6 * 3600_000L
+        val items = (0 until arr.length()).map { arr.getJSONObject(it) }
+            .filter { !it.optBoolean("outgoing") && it.optLong("time") > since }.take(5)
+        if (items.isEmpty()) {
+            return if (NotificationWatcher.isEnabled(ctx)) "Koi naya message nahi" else "Messages ke liye Notification access dein"
+        }
+        return items.joinToString(". ") { "${it.optString("sender")}: ${it.optString("text")}" }
+    }
+
+    private fun readCalls(): String {
+        val arr = Store.calls(ctx)
+        if (arr.length() == 0) return "AI ne abhi tak koi call nahi uthayi"
+        return (0 until minOf(arr.length(), 3)).joinToString(". ") { i ->
+            val c = arr.getJSONObject(i)
+            val who = c.optString("name").ifBlank { c.optString("number") }
+            "$who: ${c.optString("summary").ifBlank { c.optString("transcript") }}"
         }
     }
 
@@ -345,6 +390,9 @@ class CommandExecutor(private val ctx: Context, private val agentListener: Scree
 
     companion object {
         const val A11Y_MISSING = "Pehle AR Controller ki Accessibility permission on karein"
+
+        /** Replies starting with this are questions: speak them, then listen for the answer. */
+        const val ASK_PREFIX = "\u0001ASK:"
 
         @Volatile
         private var torchOn = false

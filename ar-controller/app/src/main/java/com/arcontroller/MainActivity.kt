@@ -3,6 +3,7 @@ package com.arcontroller
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.webkit.WebView
 import org.json.JSONObject
@@ -29,12 +30,23 @@ class MainActivity : Activity(), Bridge.Host, VoiceAssistant.Listener {
             setBackgroundColor(Color.parseColor("#05070F"))
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            // Call recordings live in app storage and are played by the Inbox page.
+            settings.allowFileAccess = true
             isVerticalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
         }
         bridge = Bridge(this, web, this).also { it.attach() }
         setContentView(web)
-        web.loadUrl("file:///android_asset/ui/index.html")
+        val tab = intent?.getStringExtra("tab").orEmpty()
+        web.loadUrl("file:///android_asset/ui/index.html" + if (tab.isNotBlank()) "#$tab" else "")
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.getStringExtra("tab")?.takeIf { it.isNotBlank() }?.let {
+            bridge.emit("tab", JSONObject().put("tab", it))
+        }
     }
 
     override fun onResume() {
@@ -68,36 +80,52 @@ class MainActivity : Activity(), Bridge.Host, VoiceAssistant.Listener {
     override fun executor() = executor
 
     override fun requestRuntimePermissions(names: List<String>) {
-        val perms = names.mapNotNull { Bridge.RUNTIME[it] }
-            .filter { it != "android.permission.POST_NOTIFICATIONS" || android.os.Build.VERSION.SDK_INT >= 33 }
+        val perms = names.flatMap { Bridge.RUNTIME[it].orEmpty() }
+            .filter { it != "android.permission.POST_NOTIFICATIONS" || Build.VERSION.SDK_INT >= 33 }
+            .distinct()
         if (perms.isEmpty()) bridge.emit("refresh") else requestPermissions(perms.toTypedArray(), 42)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         bridge.emit("refresh")
+        OverlayService.send(this, OverlayService.ACTION_RELOAD_SETTINGS)
     }
 
-    /** In-app assistant: the overlay assistant handles it when running, otherwise a local one-shot listener. */
-    override fun listen() {
-        if (OverlayService.isRunning) {
-            OverlayService.send(this, OverlayService.ACTION_LISTEN)
-            return
-        }
+    private fun ensureVoice(): VoiceAssistant? {
         if (!Bridge.granted(this, "microphone")) {
             requestRuntimePermissions(listOf("microphone"))
-            return
+            return null
         }
-        val v = voice ?: VoiceAssistant(this, this).also { voice = it; it.start(false) }
-        v.listenForCommandNow()
+        return voice ?: VoiceAssistant(this, this).also { voice = it; it.start(false) }
+    }
+
+    /** The orb on the home screen: one tap = listen once. */
+    override fun listen() {
+        val v = ensureVoice() ?: return
+        if (v.state == VoiceAssistant.State.LISTENING_COMMAND) v.cancelListening() else v.listenForCommandNow()
     }
 
     override fun hostCommand(cmd: String, arg: String): String {
-        if (cmd == "say") onCommand(arg)
+        when (cmd) {
+            "speak" -> {
+                val fresh = voice == null
+                // A just-created TTS engine needs a moment before it can speak.
+                ensureVoice()?.let { v -> web.postDelayed({ v.speak(arg) }, if (fresh) 900 else 0) }
+            }
+            "replyVoice" -> {
+                executor.pendingReplyTo = arg
+                ensureVoice()?.ask("$arg ko kya reply karun?")
+            }
+        }
         return ""
     }
 
     // ---------------------------------------------------------------- VoiceAssistant.Listener
+
+    override fun onLevel(level: Float) {
+        bridge.emit("level", JSONObject().put("v", level.toDouble()))
+    }
 
     override fun onStateChanged(state: VoiceAssistant.State, detail: String?) {
         bridge.emit("voice", JSONObject().put("state", state.name).put("detail", detail ?: ""))
@@ -105,13 +133,27 @@ class MainActivity : Activity(), Bridge.Host, VoiceAssistant.Listener {
 
     override fun onCommand(text: String) {
         bridge.emit("heard", JSONObject().put("text", text))
+        executor.pendingReplyTo?.let { who ->
+            executor.pendingReplyTo = null
+            val reply = executor.execute(AICommand("reply_message", who.ifBlank { null }, text))
+            bridge.emit("reply", JSONObject().put("text", reply))
+            bridge.emit("inbox", JSONObject())
+            voice?.speak(reply)
+            return
+        }
         voice?.setThinking(text)
         worker.execute {
             val cmd = runCatching { AIBrain.interpret(this, text) }.getOrElse { AICommand("chat", reply = "Error: ${it.message}") }
             runOnUiThread {
                 val reply = runCatching { executor.execute(cmd) }.getOrElse { "Error: ${it.message}" }
-                bridge.emit("reply", JSONObject().put("text", reply).put("action", cmd.action))
-                voice?.speak(reply)
+                if (reply.startsWith(CommandExecutor.ASK_PREFIX)) {
+                    val q = reply.removePrefix(CommandExecutor.ASK_PREFIX)
+                    bridge.emit("reply", JSONObject().put("text", q))
+                    voice?.ask(q)
+                } else {
+                    bridge.emit("reply", JSONObject().put("text", reply).put("action", cmd.action))
+                    voice?.speak(reply)
+                }
             }
         }
     }
