@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="style.css">
+<style>
+  html, body { background: transparent; height: 100%; overflow: hidden; }
+  .panel { position: absolute; inset: 0; display: flex; flex-direction: column; border-radius: 24px; overflow: hidden;
+    background: linear-gradient(180deg, #121a33 0%, #0a0f1e 38%); border: 1px solid rgba(148, 163, 184, .18); }
+  .top { padding: 14px 14px 10px; }
+  .top .title { font-weight: 700; font-size: 15px; }
+  .top .meta { color: var(--muted); font-size: 11.5px; display: flex; gap: 10px; align-items: center; }
+  .icon-btn { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: rgba(255, 255, 255, .06); color: #cbd5e1; transition: transform .15s; }
+  .icon-btn:active { transform: scale(.92); }
+  .ask { display: flex; align-items: center; gap: 8px; margin: 12px 14px 0; padding: 4px 4px 4px 14px; border-radius: 16px; background: #0b1020; border: 1px solid var(--line); }
+  .ask input { flex: 1; min-width: 0; border: 0; background: none; outline: none; height: 40px; font-size: 14px; user-select: text; }
+  .ask .go { width: 40px; height: 40px; border-radius: 12px; background: var(--grad); display: grid; place-items: center; color: #fff; }
+  .tabs { margin: 12px 14px 0; }
+  .body { flex: 1; overflow-y: auto; padding: 4px 14px 14px; scrollbar-width: none; }
+  .body::-webkit-scrollbar { display: none; }
+  .label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); font-weight: 700; margin: 16px 2px 8px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .fn { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 2px 10px; border-radius: 16px;
+    background: rgba(255, 255, 255, .04); border: 1px solid rgba(148, 163, 184, .08); color: #dbe3ff; transition: transform .15s var(--ease), background .2s; }
+  .fn:active { transform: scale(.93); background: rgba(139, 92, 246, .18); }
+  .fn span { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .fn.on { background: rgba(139, 92, 246, .22); border-color: rgba(139, 92, 246, .5); color: #fff; }
+  .fn.on span { color: #ddd6fe; }
+  .media { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 18px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(148, 163, 184, .08); }
+  .media .play { width: 48px; height: 48px; border-radius: 50%; background: var(--grad); color: #fff; display: grid; place-items: center; }
+  .apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 6px; }
+  .app { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0 8px; border-radius: 14px; transition: transform .15s, background .2s; }
+  .app:active { transform: scale(.92); background: rgba(255, 255, 255, .06); }
+  .app img, .app .ph { width: 44px; height: 44px; border-radius: 12px; }
+  .app .ph { background: #1c2541; display: grid; place-items: center; font-weight: 700; }
+  .app span { font-size: 10.5px; color: #cbd5e1; max-width: 72px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; padding: 0 12px; height: 40px; border-radius: 12px; background: #0b1020; border: 1px solid var(--line); color: var(--muted); }
+  .search input { flex: 1; border: 0; outline: none; background: none; user-select: text; color: var(--text); }
+  .status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .status .dot { color: var(--violet); }
+  .view { animation: fade .22s var(--ease); }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+  .skeleton { height: 64px; border-radius: 14px; background: linear-gradient(90deg, #121a30, #1a2340, #121a30); background-size: 200% 100%; animation: sh 1.2s linear infinite; }
+  @keyframes sh { to { background-position: -200% 0; } }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div class="top row">
+    <div class="avatar ring" style="width:38px;height:38px"><img src="avatar.jpg" alt=""></div>
+    <div class="grow">
+      <div class="title">AR Controller</div>
+      <div class="meta"><span id="clock"></span><span id="batt"></span></div>
+    </div>
+    <button class="icon-btn" id="openMain" aria-label="Open app"><i data-icon="layout-grid" data-size="sm"></i></button>
+    <button class="icon-btn" id="close" aria-label="Close"><i data-icon="x" data-size="sm"></i></button>
+  </div>
+
+  <div class="ask">
+    <i data-icon="sparkles" data-size="sm"></i>
+    <input id="ask" placeholder="Ask AR or give a command" autocomplete="off">
+    <button class="go" id="askGo" aria-label="Talk"><i data-icon="mic" data-size="sm"></i></button>
+  </div>
+
+  <div class="tabs seg" id="tabs">
+    <button data-tab="controls" class="on">Controls</button><button data-tab="apps">All apps</button>
+  </div>
+
+  <div class="body" id="body"></div>
+
+  <div class="status"><span class="dot"></span><span id="status" class="grow">Say "Hey AR" anytime</span></div>
+</div>
+
+<script src="icons.js"></script>
+<script src="bridge.js"></script>
+<script>
+var SECTIONS = [
+  { label: 'Quick toggles', items: [
+    ['flashlight', 'Torch', 'torch_toggle'], ['wifi', 'Wi-Fi', 'open_settings', 'wifi'], ['bluetooth', 'Bluetooth', 'open_settings', 'bluetooth'],
+    ['signal', 'Data', 'open_settings', 'data'], ['rotate-cw', 'Rotate', 'rotate_toggle'], ['moon', 'Do not disturb', 'dnd_toggle'],
+    ['vibrate', 'Ringer', 'ringer_cycle'], ['coffee', 'Stay awake', 'keep_awake'] ] },
+  { label: 'Display & sound', items: [
+    ['sun-dim', 'Dimmer', 'brightness_down'], ['sun', 'Brighter', 'brightness_up'], ['zap', 'Max bright', 'brightness_max'],
+    ['volume-x', 'Mute', 'mute'], ['volume-1', 'Vol -', 'volume_down'], ['volume-2', 'Vol +', 'volume_up'],
+    ['map-pin', 'Location', 'open_settings', 'location'], ['battery-medium', 'Battery', 'battery'] ] },
+  { label: 'Navigation', items: [
+    ['house', 'Home', 'home'], ['arrow-left', 'Back', 'back'], ['square-stack', 'Recents', 'recents'], ['bell', 'Notifications', 'notifications'],
+    ['sliders-horizontal', 'Quick settings', 'quick_settings'], ['scan-line', 'Screenshot', 'screenshot'], ['lock', 'Lock', 'lock_screen'], ['power', 'Power', 'power_menu'] ] },
+  { label: 'Open', items: [
+    ['camera', 'Camera', 'open_camera'], ['phone', 'Dialer', 'open_dialer'], ['message-square', 'Messages', 'open_messages'], ['users', 'Contacts', 'open_contacts'],
+    ['image', 'Gallery', 'open_gallery'], ['calculator', 'Calculator', 'open_calculator'], ['calendar', 'Calendar', 'open_calendar'], ['alarm-clock', 'Clock', 'open_clock'],
+    ['map', 'Maps', 'open_maps'], ['music', 'Music', 'open_music'], ['globe', 'Browser', 'open_browser'], ['settings', 'Settings', 'open_settings'] ] },
+  { label: 'Windows & screen', items: [
+    ['picture-in-picture-2', 'Web window', 'float_website', 'https://www.google.com'], ['x', 'Close windows', 'close_floating'],
+    ['file-text', 'Read screen', 'read_screen'], ['chevrons-down', 'Scroll down', 'scroll_down'] ] }
+];
+var tab = 'controls', apps = null, hostState = {};
+
+function fnButton(it) {
+  var on = it[2] === 'keep_awake' && hostState.keepAwake;
+  return '<button class="fn' + (on ? ' on' : '') + '" data-a="' + it[2] + '" data-arg="' + (it[3] || '') + '">' + icon(it[0]) + '<span>' + it[1] + '</span></button>';
+}
+
+function renderControls() {
+  var html = '<div class="view"><div class="label">Media</div><div class="media">' +
+    '<button class="icon-btn" data-a="media_previous">' + icon('skip-back') + '</button>' +
+    '<button class="icon-btn" data-a="volume_down">' + icon('volume-1') + '</button>' +
+    '<button class="play" data-a="media_play_pause">' + icon('play') + '</button>' +
+    '<button class="icon-btn" data-a="volume_up">' + icon('volume-2') + '</button>' +
+    '<button class="icon-btn" data-a="media_next">' + icon('skip-forward') + '</button></div>';
+  SECTIONS.forEach(function (s) {
+    html += '<div class="label">' + s.label + '</div><div class="grid">' + s.items.map(fnButton).join('') + '</div>';
+  });
+  $('#body').innerHTML = html + '</div>';
+  $$('[data-a]', $('#body')).forEach(function (b) {
+    b.onclick = function () {
+      var a = b.getAttribute('data-a'), arg = b.getAttribute('data-arg') || '';
+      if (a === 'torch_toggle') b.classList.toggle('on');
+      if (a === 'keep_awake') b.classList.toggle('on');
+      AR.action(a, arg).then(function (reply) { if (reply && reply !== 'ok') setStatus(reply); });
+    };
+  });
+}
+
+function renderApps() {
+  $('#body').innerHTML = '<div class="view"><div class="search">' + icon('search', 'sm') +
+    '<input id="q" placeholder="Search apps" autocomplete="off"></div>' +
+    '<div class="muted small" style="margin:2px 2px 8px">Tap = floating panel  |  Hold = full screen</div><div class="apps" id="apps">' +
+    '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></div>';
+  var q = $('#q');
+  q.onfocus = function () { AR.host('focus', '1'); };
+  q.onblur = function () { AR.host('focus', '0'); };
+  q.oninput = function () { drawApps(q.value.toLowerCase()); };
+  if (apps) drawApps(''); else AR.apps().then(function (list) { apps = list; if (tab === 'apps') drawApps(q.value.toLowerCase()); });
+}
+
+function drawApps(filter) {
+  var box = $('#apps'); if (!box || !apps) return;
+  box.innerHTML = apps.filter(function (a) { return !filter || a.label.toLowerCase().indexOf(filter) >= 0; }).map(function (a) {
+    var img = a.icon ? '<img src="' + a.icon + '" alt="">' : '<div class="ph">' + esc(a.label.charAt(0)) + '</div>';
+    return '<button class="app" data-pkg="' + esc(a.pkg) + '">' + img + '<span>' + esc(a.label) + '</span></button>';
+  }).join('');
+  $$('.app', box).forEach(function (el) {
+    var timer = null, long = false;
+    el.addEventListener('touchstart', function () { long = false; timer = setTimeout(function () { long = true; launch(el, 'full'); }, 520); }, { passive: true });
+    el.addEventListener('touchend', function () { clearTimeout(timer); });
+    el.addEventListener('touchmove', function () { clearTimeout(timer); }, { passive: true });
+    el.onclick = function () { if (!long) launch(el, 'float'); };
+  });
+}
+
+function launch(el, mode) {
+  el.style.transform = 'scale(.9)';
+  AR.launch(el.getAttribute('data-pkg'), mode).then(function (msg) { if (msg) setStatus(msg); });
+}
+
+function setTab(t) {
+  tab = t;
+  $$('#tabs button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === t); });
+  if (t === 'apps') renderApps(); else renderControls();
+}
+
+function setStatus(t) { $('#status').textContent = t; }
+
+function tick() {
+  var d = new Date(), h = d.getHours(), m = d.getMinutes();
+  $('#clock').textContent = ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
+}
+
+var STATE_TEXT = { WAITING_WAKE_WORD: 'Say "Hey AR" anytime', LISTENING_COMMAND: 'Listening...', THINKING: 'Thinking...', SPEAKING: 'Speaking' };
+AR.on('voice', function (e) { if (STATE_TEXT[e.state]) setStatus(STATE_TEXT[e.state]); });
+AR.on('reply', function (e) { setStatus(e.text); });
+AR.on('agent', function (e) { setStatus(e.text); });
+
+paintIcons();
+try { hostState = JSON.parse(AR.host('state') || '{}'); } catch (e) { hostState = {}; }
+var st = AR.status();
+$('#batt').innerHTML = 'Battery ' + st.battery + '%';
+tick(); setInterval(tick, 15000);
+setTab('controls');
+
+$$('#tabs button').forEach(function (b) { b.onclick = function () { setTab(b.getAttribute('data-tab')); }; });
+$('#close').onclick = function () { AR.host('close'); };
+$('#openMain').onclick = function () { AR.host('openMain'); };
+var ask = $('#ask');
+ask.onfocus = function () { AR.host('focus', '1'); };
+ask.onblur = function () { AR.host('focus', '0'); };
+ask.oninput = function () { $('#askGo').innerHTML = icon(ask.value ? 'send' : 'mic', 'sm'); };
+function submitAsk() {
+  var t = ask.value.trim();
+  if (!t) { AR.host('assistant', 'listen'); return; }
+  ask.value = ''; ask.oninput(); ask.blur();
+  setStatus('Thinking...');
+  AR.host('say', t);
+}
+$('#askGo').onclick = submitAsk;
+ask.onkeydown = function (e) { if (e.key === 'Enter') submitAsk(); };
+</script>
+</body>
+</html>
