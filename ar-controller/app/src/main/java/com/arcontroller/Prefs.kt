@@ -34,6 +34,29 @@ object Prefs {
     fun bottomOrb(ctx: Context) = prefs(ctx).getBoolean("bottomOrb", true)
     fun setBottomOrb(ctx: Context, enabled: Boolean) = prefs(ctx).edit().putBoolean("bottomOrb", enabled).apply()
 
+    /** Master AI switch: off = controller only (no orb, no microphone, no AI call answering). */
+    fun aiEnabled(ctx: Context) = prefs(ctx).getBoolean("aiEnabled", true)
+    fun setAiEnabled(ctx: Context, enabled: Boolean) = prefs(ctx).edit().putBoolean("aiEnabled", enabled).apply()
+
+    const val DEFAULT_GREETING =
+        "Assalam o Alaikum. Sir abhi busy hain. Aap apna naam aur paigham bata dein, main unhein bata dunga."
+    const val DEFAULT_FAREWELL = "Shukriya. Main sir ko bata dunga. Allah Hafiz."
+
+    fun callGreeting(ctx: Context) = (prefs(ctx).getString("callGreeting", null) ?: "").ifBlank { DEFAULT_GREETING }
+    fun callFarewell(ctx: Context) = (prefs(ctx).getString("callFarewell", null) ?: "").ifBlank { DEFAULT_FAREWELL }
+    fun setCallTexts(ctx: Context, greeting: String?, farewell: String?) = prefs(ctx).edit().apply {
+        greeting?.let { putString("callGreeting", it.trim()) }
+        farewell?.let { putString("callFarewell", it.trim()) }
+    }.apply()
+
+    /** Show the incoming-call card (answer / decline / AI answer) over other apps. */
+    fun callCard(ctx: Context) = prefs(ctx).getBoolean("callCard", true)
+    fun setCallCard(ctx: Context, enabled: Boolean) = prefs(ctx).edit().putBoolean("callCard", enabled).apply()
+
+    /** Speak new WhatsApp messages aloud when the AI is on. */
+    fun announceMessages(ctx: Context) = prefs(ctx).getBoolean("announceMessages", false)
+    fun setAnnounceMessages(ctx: Context, enabled: Boolean) = prefs(ctx).edit().putBoolean("announceMessages", enabled).apply()
+
     fun save(
         ctx: Context,
         apiKey: String?,

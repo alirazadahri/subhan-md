@@ -49,17 +49,24 @@ class Bridge(private val ctx: Context, private val web: WebView, private val hos
         @Volatile
         private var iconCache: Map<String, String> = emptyMap()
 
-        val RUNTIME = mapOf(
-            "microphone" to Manifest.permission.RECORD_AUDIO,
-            "contacts" to Manifest.permission.READ_CONTACTS,
-            "phone" to Manifest.permission.CALL_PHONE,
-            "notifications" to "android.permission.POST_NOTIFICATIONS",
+        /** Runtime permission groups shown in the UI → Android permissions requested together. */
+        val RUNTIME: Map<String, List<String>> = mapOf(
+            "microphone" to listOf(Manifest.permission.RECORD_AUDIO),
+            "contacts" to listOf(Manifest.permission.READ_CONTACTS),
+            "phone" to listOfNotNull(
+                Manifest.permission.CALL_PHONE,
+                Manifest.permission.READ_PHONE_STATE,
+                Manifest.permission.READ_CALL_LOG,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Manifest.permission.ANSWER_PHONE_CALLS else null,
+            ),
+            "sms" to listOf(Manifest.permission.SEND_SMS),
+            "notifications" to listOf("android.permission.POST_NOTIFICATIONS"),
         )
 
         fun granted(ctx: Context, name: String): Boolean {
             if (name == "notifications" && Build.VERSION.SDK_INT < 33) return true
-            val p = RUNTIME[name] ?: return false
-            return ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
+            val perms = RUNTIME[name] ?: return false
+            return perms.all { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
         }
 
         fun canDrawOverlays(ctx: Context) = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)
@@ -104,6 +111,8 @@ class Bridge(private val ctx: Context, private val web: WebView, private val hos
         RUNTIME.keys.forEach { put(it, granted(ctx, it)) }
         put("writeSettings", canWriteSettings(ctx))
         put("dnd", hasDndAccess(ctx))
+        put("notificationAccess", NotificationWatcher.isEnabled(ctx))
+        put("ai", Prefs.aiEnabled(ctx))
         put("freeform", FloatingAppLauncher.isFreeformSupported(ctx))
         put("devOptions", Settings.Global.getInt(ctx.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0)
         put("serviceRunning", OverlayService.isRunning)
@@ -124,7 +133,11 @@ class Bridge(private val ctx: Context, private val web: WebView, private val hos
         put("language", Prefs.language(ctx))
         put("wakeWord", Prefs.wakeWordEnabled(ctx))
         put("freeAi", Prefs.freeAiEnabled(ctx))
-        put("bottomOrb", Prefs.bottomOrb(ctx))
+        put("ai", Prefs.aiEnabled(ctx))
+        put("callCard", Prefs.callCard(ctx))
+        put("announce", Prefs.announceMessages(ctx))
+        put("greeting", Prefs.callGreeting(ctx))
+        put("farewell", Prefs.callFarewell(ctx))
     }.toString()
 
     @JavascriptInterface
@@ -137,10 +150,13 @@ class Bridge(private val ctx: Context, private val web: WebView, private val hos
             baseUrl = s("baseUrl"),
             model = s("model"),
             language = s("language"),
-            wakeWord = if (o.has("wakeWord")) o.getBoolean("wakeWord") else null,
+            wakeWord = null,
         )
         if (o.has("freeAi")) Prefs.setFreeAi(ctx, o.getBoolean("freeAi"))
-        if (o.has("bottomOrb")) Prefs.setBottomOrb(ctx, o.getBoolean("bottomOrb"))
+        if (o.has("ai")) Prefs.setAiEnabled(ctx, o.getBoolean("ai"))
+        if (o.has("callCard")) Prefs.setCallCard(ctx, o.getBoolean("callCard"))
+        if (o.has("announce")) Prefs.setAnnounceMessages(ctx, o.getBoolean("announce"))
+        Prefs.setCallTexts(ctx, s("greeting"), s("farewell"))
         if (o.optBoolean("clearKey")) Prefs.save(ctx, "", null, null, null, null)
         AIBrain.clearHistory()
         OverlayService.send(ctx, OverlayService.ACTION_RELOAD_SETTINGS)
@@ -157,6 +173,7 @@ class Bridge(private val ctx: Context, private val web: WebView, private val hos
             "accessibility" -> startIntent(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             "writeSettings" -> startIntent(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, pkg), Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS))
             "dnd" -> startIntent(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+            "notificationAccess" -> startIntent(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
             "appDetails" -> startIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg))
             "devOptions" -> {
                 val enabled = Settings.Global.getInt(ctx.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0
@@ -281,6 +298,31 @@ class Bridge(private val ctx: Context, private val web: WebView, private val hos
 
     @JavascriptInterface
     fun clearError() = CrashReporter.clear(ctx)
+
+    // ---------------------------------------------------------------- inbox (AI calls + WhatsApp)
+
+    @JavascriptInterface
+    fun calls(): String = Store.calls(ctx).toString()
+
+    @JavascriptInterface
+    fun messages(): String = Store.messages(ctx).toString()
+
+    @JavascriptInterface
+    fun deleteCall(id: String) = Store.deleteCall(ctx, id)
+
+    @JavascriptInterface
+    fun clearMessages() = Store.clearMessages(ctx)
+
+    @JavascriptInterface
+    fun canReply(sender: String): Boolean = NotificationWatcher.canReply(sender)
+
+    /** Reads text aloud (call summaries, messages). */
+    @JavascriptInterface
+    fun speak(text: String) = onMain { host.hostCommand("speak", text) }
+
+    /** Listen by voice and send the result as a WhatsApp reply to [sender]. */
+    @JavascriptInterface
+    fun replyByVoice(sender: String) = onMain { host.hostCommand("replyVoice", sender) }
 
     @JavascriptInterface
     fun openUrl(url: String) = onMain { startIntent(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
